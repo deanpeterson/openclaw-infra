@@ -589,11 +589,7 @@ echo ""
 # Create namespace
 log_info "Creating namespace..."
 $KUBECTL create namespace "$OPENCLAW_NAMESPACE" --dry-run=client -o yaml | $KUBECTL apply -f - > /dev/null
-# Label namespace for Kagenti webhook injection (A2A sidecars)
-if [ "$A2A_ENABLED" = "true" ]; then
-  $KUBECTL label namespace "$OPENCLAW_NAMESPACE" kagenti-enabled=true --overwrite > /dev/null
-  log_success "Namespace labeled for Kagenti webhook injection (kagenti-enabled=true)"
-fi
+# Kagenti namespace label + ConfigMaps are applied below via setup-kagenti-ns.sh
 $KUBECTL annotate namespace "$OPENCLAW_NAMESPACE" \
   "openclaw.dev/owner=$OPENCLAW_PREFIX" \
   "openclaw.dev/agent-name=$SHADOWMAN_DISPLAY_NAME" \
@@ -602,21 +598,12 @@ $KUBECTL annotate namespace "$OPENCLAW_NAMESPACE" \
 log_success "Namespace created: $OPENCLAW_NAMESPACE (owner: $OPENCLAW_PREFIX, agent: $SHADOWMAN_DISPLAY_NAME)"
 echo ""
 
-# Patch environments ConfigMap with Keycloak keys for AIB client-registration sidecar.
-# The Kagenti helm chart creates the 'environments' ConfigMap but doesn't include the
-# individual KEYCLOAK_* keys that the client-registration container expects via configMapKeyRef.
-# TODO: Remove once kagenti upstream includes these keys (PR: kagenti/kagenti#charts-clustername-fix).
+# Create Kagenti AIB ConfigMaps and label namespace for webhook injection.
+# See setup-kagenti-ns.sh for details on what's created.
 if [ "$A2A_ENABLED" = "true" ]; then
-  log_info "Patching environments ConfigMap with Keycloak keys..."
-  # Read actual Keycloak admin credentials from the secret created by the RHBK operator.
-  # The RHBK operator creates a bootstrap admin user (e.g. "temp-admin") with a random password,
-  # NOT the default "admin/admin". The client-registration sidecar needs these to register clients.
-  KC_ADMIN_USER=$($KUBECTL get secret keycloak-initial-admin -n keycloak -o jsonpath='{.data.username}' 2>/dev/null | base64 -d) || KC_ADMIN_USER="admin"
-  KC_ADMIN_PASS=$($KUBECTL get secret keycloak-initial-admin -n keycloak -o jsonpath='{.data.password}' 2>/dev/null | base64 -d) || KC_ADMIN_PASS="admin"
-  $KUBECTL patch configmap environments -n "$OPENCLAW_NAMESPACE" --type merge -p \
-    "{\"data\":{\"KEYCLOAK_REALM\":\"demo\",\"KEYCLOAK_URL\":\"http://keycloak-service.keycloak.svc.cluster.local:8080\",\"KEYCLOAK_ADMIN_USERNAME\":\"${KC_ADMIN_USER}\",\"KEYCLOAK_ADMIN_PASSWORD\":\"${KC_ADMIN_PASS}\",\"KEYCLOAK_TOKEN_EXCHANGE_ENABLED\":\"true\",\"KEYCLOAK_CLIENT_REGISTRATION_ENABLED\":\"true\",\"SPIRE_ENABLED\":\"true\"}}" \
-    2>/dev/null && log_success "Keycloak keys added to environments ConfigMap (user: $KC_ADMIN_USER)" \
-    || log_warn "Could not patch environments ConfigMap — it may not exist yet. Re-run setup.sh after setup-kagenti.sh completes."
+  NS_ARGS=(-n "$OPENCLAW_NAMESPACE")
+  if $K8S_MODE; then NS_ARGS+=(--k8s); fi
+  "$SCRIPT_DIR/setup-kagenti-ns.sh" "${NS_ARGS[@]}"
   echo ""
 fi
 
