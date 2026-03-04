@@ -137,7 +137,8 @@ echo ""
 
 # Apply SCC RBAC (reuses the shared openclaw-authbridge SCC)
 log_info "Applying SCC RBAC..."
-if $KUBECTL apply -f "$REPO_ROOT/agents/openclaw/base/openclaw-scc.yaml" 2>/dev/null; then
+GENERATED_DIR="$REPO_ROOT/generated"
+if $KUBECTL apply -f "$GENERATED_DIR/agents/openclaw/base/openclaw-scc.yaml" 2>/dev/null; then
   log_success "SCC openclaw-authbridge applied"
 else
   log_warn "Could not apply SCC (may already exist or need cluster-admin)"
@@ -166,23 +167,25 @@ log_info "Deploying AuthBridge configuration..."
 AUTHBRIDGE_VARS='${KEYCLOAK_URL} ${KEYCLOAK_REALM} ${KEYCLOAK_ADMIN_USERNAME} ${KEYCLOAK_ADMIN_PASSWORD}'
 for tpl in "$REPO_ROOT/agents/nps-agent/authbridge-configmaps.yaml.envsubst" \
            "$REPO_ROOT/agents/nps-agent/authbridge-secret.yaml.envsubst"; do
-  yaml="${tpl%.envsubst}"
-  envsubst "$AUTHBRIDGE_VARS" < "$tpl" > "$yaml"
+  rel="${tpl#$REPO_ROOT/}"
+  out="$GENERATED_DIR/${rel%.envsubst}"
+  mkdir -p "$(dirname "$out")"
+  envsubst "$AUTHBRIDGE_VARS" < "$tpl" > "$out"
 done
-$KUBECTL apply -f "$REPO_ROOT/agents/nps-agent/authbridge-configmaps.yaml" -n "$NPS_AGENT_NAMESPACE"
-$KUBECTL apply -f "$REPO_ROOT/agents/nps-agent/authbridge-secret.yaml" -n "$NPS_AGENT_NAMESPACE"
+$KUBECTL apply -f "$GENERATED_DIR/agents/nps-agent/authbridge-configmaps.yaml" -n "$NPS_AGENT_NAMESPACE"
+$KUBECTL apply -f "$GENERATED_DIR/agents/nps-agent/authbridge-secret.yaml" -n "$NPS_AGENT_NAMESPACE"
 log_success "AuthBridge configuration deployed"
 echo ""
 
 # Apply ServiceAccount
 log_info "Creating ServiceAccount..."
-$KUBECTL apply -f "$REPO_ROOT/agents/nps-agent/nps-agent-rbac.yaml" -n "$NPS_AGENT_NAMESPACE"
+$KUBECTL apply -f "$GENERATED_DIR/agents/nps-agent/nps-agent-rbac.yaml" -n "$NPS_AGENT_NAMESPACE"
 log_success "ServiceAccount created"
 echo ""
 
 # Apply BuildConfig + ImageStream
 log_info "Creating build from GitHub repo..."
-$KUBECTL apply -f "$REPO_ROOT/agents/nps-agent/nps-agent-buildconfig.yaml" -n "$NPS_AGENT_NAMESPACE"
+$KUBECTL apply -f "$GENERATED_DIR/agents/nps-agent/nps-agent-buildconfig.yaml" -n "$NPS_AGENT_NAMESPACE"
 log_success "BuildConfig created (source: https://github.com/Nehanth/nps_agent)"
 echo ""
 
@@ -208,28 +211,29 @@ echo ""
 
 # Run envsubst on deployment template
 log_info "Generating deployment manifest..."
+mkdir -p "$GENERATED_DIR/agents/nps-agent"
 envsubst '${NPS_AGENT_NAMESPACE}' < "$REPO_ROOT/agents/nps-agent/nps-agent-deployment.yaml.envsubst" \
-  > "$REPO_ROOT/agents/nps-agent/nps-agent-deployment.yaml"
+  > "$GENERATED_DIR/agents/nps-agent/nps-agent-deployment.yaml"
 log_success "Generated nps-agent-deployment.yaml"
 echo ""
 
 # Apply A2A bridge ConfigMap
 log_info "Deploying A2A bridge..."
-$KUBECTL apply -f "$REPO_ROOT/agents/nps-agent/nps-agent-a2a-bridge.yaml" -n "$NPS_AGENT_NAMESPACE"
+$KUBECTL apply -f "$GENERATED_DIR/agents/nps-agent/nps-agent-a2a-bridge.yaml" -n "$NPS_AGENT_NAMESPACE"
 log_success "A2A bridge ConfigMap deployed"
 echo ""
 
 # Apply npsagent.py patch (vLLM compatibility — uses ChatCompletions model)
 log_info "Applying npsagent.py patch for vLLM compatibility..."
-$KUBECTL apply -f "$REPO_ROOT/agents/nps-agent/npsagent-patch.yaml" -n "$NPS_AGENT_NAMESPACE"
+$KUBECTL apply -f "$GENERATED_DIR/agents/nps-agent/npsagent-patch.yaml" -n "$NPS_AGENT_NAMESPACE"
 log_success "npsagent patch deployed"
 echo ""
 
 # Apply Deployment + Service + Route
 log_info "Deploying NPS Agent..."
-$KUBECTL apply -f "$REPO_ROOT/agents/nps-agent/nps-agent-deployment.yaml" -n "$NPS_AGENT_NAMESPACE"
-$KUBECTL apply -f "$REPO_ROOT/agents/nps-agent/nps-agent-service.yaml" -n "$NPS_AGENT_NAMESPACE"
-$KUBECTL apply -f "$REPO_ROOT/agents/nps-agent/nps-agent-route.yaml" -n "$NPS_AGENT_NAMESPACE"
+$KUBECTL apply -f "$GENERATED_DIR/agents/nps-agent/nps-agent-deployment.yaml" -n "$NPS_AGENT_NAMESPACE"
+$KUBECTL apply -f "$GENERATED_DIR/agents/nps-agent/nps-agent-service.yaml" -n "$NPS_AGENT_NAMESPACE"
+$KUBECTL apply -f "$GENERATED_DIR/agents/nps-agent/nps-agent-route.yaml" -n "$NPS_AGENT_NAMESPACE"
 log_success "NPS Agent deployed"
 echo ""
 
@@ -243,7 +247,7 @@ echo ""
 
 # Deploy eval CronJob
 log_info "Deploying evaluation CronJob..."
-$KUBECTL apply -f "$REPO_ROOT/agents/nps-agent/nps-agent-eval.yaml" -n "$NPS_AGENT_NAMESPACE"
+$KUBECTL apply -f "$GENERATED_DIR/agents/nps-agent/nps-agent-eval.yaml" -n "$NPS_AGENT_NAMESPACE"
 envsubst '${NPS_AGENT_NAMESPACE}' < "$REPO_ROOT/agents/nps-agent/nps-agent-eval-job.yaml.envsubst" | \
   $KUBECTL apply -f - -n "$NPS_AGENT_NAMESPACE"
 log_success "Eval CronJob deployed (weekly Monday 8AM UTC, or trigger with: oc create job nps-eval-now --from=cronjob/nps-eval -n $NPS_AGENT_NAMESPACE)"

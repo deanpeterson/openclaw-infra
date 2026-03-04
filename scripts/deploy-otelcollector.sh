@@ -70,8 +70,9 @@ log_success() { echo -e "${GREEN}✓${NC} $1"; }
 log_warn()    { echo -e "${YELLOW}⚠${NC} $1"; }
 log_error()   { echo -e "${RED}✗${NC} $1"; }
 
+GENERATED_DIR="$REPO_ROOT/generated"
 OTEL_TEMPLATE="$REPO_ROOT/platform/observability/openclaw-otel-sidecar.yaml.envsubst"
-OTEL_YAML="${OTEL_TEMPLATE%.envsubst}"
+OTEL_YAML="$GENERATED_DIR/platform/observability/openclaw-otel-sidecar.yaml"
 
 if [ ! -f "$OTEL_TEMPLATE" ]; then
   log_error "OTEL sidecar template not found: $OTEL_TEMPLATE"
@@ -141,6 +142,7 @@ echo ""
 
 # Run envsubst
 log_info "Generating OTEL collector manifest..."
+mkdir -p "$(dirname "$OTEL_YAML")"
 ENVSUBST_VARS='${OPENCLAW_NAMESPACE} ${MLFLOW_TRACKING_URI} ${MLFLOW_EXPERIMENT_ID} ${MLFLOW_TLS_INSECURE}'
 envsubst "$ENVSUBST_VARS" < "$OTEL_TEMPLATE" > "$OTEL_YAML"
 log_success "Generated $(basename "$OTEL_YAML")"

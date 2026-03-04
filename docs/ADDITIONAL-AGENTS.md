@@ -14,7 +14,7 @@ oc rollout status deployment/openclaw -n <prefix>-openclaw --timeout=600s
 ```
 
 The script:
-- Runs `envsubst` on agent templates
+- Runs `envsubst` on agent templates (output to `generated/`)
 - Deploys agent ConfigMaps (identity files, instructions)
 - Sets up RBAC (ServiceAccount, Roles, RoleBindings)
 - Installs agent identity files (AGENTS.md, agent.json) into workspaces

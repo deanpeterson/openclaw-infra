@@ -169,7 +169,7 @@ kubectl get secret keycloak-initial-admin -n keycloak \
 Once Kagenti is healthy, deploy OpenClaw with Auth Identity Bridge enabled:
 
 ```bash
-cd <path-to-openclaw-infra>
+cd <path-to-openclaw-k8s>
 ./scripts/setup.sh --with-a2a
 ```
 

@@ -52,7 +52,7 @@ A reproducible demo of **AI agents running across hybrid platforms** — OpenShi
 ./scripts/setup.sh --k8s              # Vanilla Kubernetes
 ```
 
-`setup.sh` prompts for namespace prefix, agent name, API keys, and optional Vertex AI / A2A config. It generates secrets into `.env` (git-ignored), runs `envsubst` on templates, and deploys via kustomize.
+`setup.sh` prompts for namespace prefix, agent name, API keys, and optional Vertex AI / A2A config. It generates secrets into `.env` (git-ignored), builds a `generated/` directory with processed templates, and deploys via kustomize.
 
 ### Edge (RHEL / Fedora)
 
@@ -88,6 +88,7 @@ kubectl port-forward svc/openclaw 18789:18789 -n <prefix>-openclaw
 | `./scripts/teardown.sh` | Remove namespace, resources, PVCs |
 | `./scripts/setup-nps-agent.sh` | Deploy NPS Agent (separate namespace) |
 | `./scripts/build-and-push.sh` | Build images with podman (optional) |
+| `./scripts/cleanup-legacy-generated.sh` | Remove old in-place generated files (one-time) |
 
 All scripts accept `--k8s` for vanilla Kubernetes and `--env-file <path>` for custom .env files.
 
@@ -96,7 +97,7 @@ All scripts accept `--k8s` for vanilla Kubernetes and `--env-file <path>` for cu
 The repo is organized into two top-level concerns: **platform** (generic trusted A2A network infrastructure) and **agents** (pluggable agent implementations). OpenClaw is the reference agent implementation.
 
 ```
-openclaw-infra/
+openclaw-k8s/
 ├── platform/                           # Generic trusted A2A network platform
 │   ├── base/                           # Namespace scaffolding, RBAC, quotas, PVCs, PDB
 │   ├── auth-identity-bridge/           # AgentCard CR + SCC (Kagenti webhook handles sidecars)
@@ -120,6 +121,7 @@ openclaw-infra/
 │   ├── nps-agent/                      # NPS Agent (separate namespace, own identity)
 │   └── _template/                      # Skeleton for new agent implementations
 │
+├── generated/                          # Mirror of agents/ + platform/ with envsubst output (GIT-IGNORED)
 ├── scripts/                            # Deployment and management scripts
 ├── docs/                               # Architecture and reference docs
 └── .env                                # Generated secrets (GIT-IGNORED)
@@ -157,15 +159,16 @@ To add a new agent, copy `agents/_template/` and customize.
 - `.envsubst` files contain `${VAR}` placeholders and are committed to Git
 - `.env` contains real secrets and is git-ignored
 - Setup scripts run `envsubst` with explicit variable lists to protect non-env placeholders like `{agentId}`
-- Generated `.yaml` files are git-ignored
+- All output goes into `generated/` (git-ignored) — a mirror of the source tree with templates processed
+- Scripts reference `$GENERATED_DIR/...` for kustomize and kubectl apply
 
 ### Config Lifecycle (K8s and Edge)
 
 ```
-.envsubst template    -->    ConfigMap    -->    PVC (live config)
-(source of truth)          (K8s object         /home/node/.openclaw/openclaw.json
-                           or YAML file)       init container copies
-                                               on EVERY start
+.envsubst template    -->    generated/     -->    ConfigMap    -->    PVC (live config)
+(source of truth)          (envsubst output)     (K8s object)       /home/node/.openclaw/openclaw.json
+                           setup.sh builds                          init container copies
+                           this directory                           on EVERY start
 ```
 
 - The init container copies `openclaw.json`, `AGENTS.md`, and `agent.json` from ConfigMap mounts into the PVC on every start

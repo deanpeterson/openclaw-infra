@@ -165,7 +165,7 @@ The resource-report CronJob provides a pattern for creating your own K8s Jobs th
 ```
 
 1. The CronJob template lives in the repo as a `.envsubst` file
-2. `setup-agents.sh` runs `envsubst` to fill in the namespace, then deploys the CronJob
+2. `setup-agents.sh` runs `envsubst` to fill in the namespace (output goes to `generated/`), then deploys the CronJob
 3. The Job pod does the actual work (queries, analysis) independently of the LLM
 4. Reports are printed to stdout (visible in job logs)
 
@@ -182,8 +182,9 @@ cp resource-optimizer/resource-report-cronjob.yaml.envsubst myagent/my-custom-cr
 3. **Add to `setup-agents.sh`** for automated deployment, or deploy manually:
 
 ```bash
-envsubst '${OPENCLAW_NAMESPACE}' < my-custom-cronjob.yaml.envsubst > my-custom-cronjob.yaml
-oc apply -f my-custom-cronjob.yaml
+mkdir -p generated/agents/openclaw/agents/myagent
+envsubst '${OPENCLAW_NAMESPACE}' < my-custom-cronjob.yaml.envsubst > generated/agents/openclaw/agents/myagent/my-custom-cronjob.yaml
+oc apply -f generated/agents/openclaw/agents/myagent/my-custom-cronjob.yaml
 ```
 
 ### Key Design Decisions

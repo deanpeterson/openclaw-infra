@@ -143,6 +143,16 @@ $KUBECTL annotate namespace "$OPENCLAW_NAMESPACE" \
 log_success "Namespace annotations updated (agents: $AGENT_LIST)"
 echo ""
 
+# Generated directory (created by setup.sh, we add to it here)
+GENERATED_DIR="$REPO_ROOT/generated"
+if [ ! -d "$GENERATED_DIR" ]; then
+  log_error "generated/ directory not found. Run setup.sh first."
+  exit 1
+fi
+
+# Refresh static agent files in generated/
+rsync -a --exclude='*.envsubst' "$REPO_ROOT/agents/openclaw/agents/" "$GENERATED_DIR/agents/openclaw/agents/"
+
 # Run envsubst on agent templates only
 log_info "Running envsubst on agent templates..."
 export MODEL_ENDPOINT="${MODEL_ENDPOINT:-http://vllm.openclaw-llms.svc.cluster.local/v1}"
@@ -178,16 +188,18 @@ fi
 ENVSUBST_VARS='${CLUSTER_DOMAIN} ${OPENCLAW_PREFIX} ${OPENCLAW_NAMESPACE} ${OPENCLAW_GATEWAY_TOKEN} ${OPENCLAW_OAUTH_CLIENT_SECRET} ${OPENCLAW_OAUTH_COOKIE_SECRET} ${ANTHROPIC_API_KEY} ${SHADOWMAN_CUSTOM_NAME} ${SHADOWMAN_DISPLAY_NAME} ${MODEL_ENDPOINT} ${DEFAULT_AGENT_MODEL} ${GOOGLE_CLOUD_PROJECT} ${GOOGLE_CLOUD_LOCATION} ${KEYCLOAK_URL} ${KEYCLOAK_REALM} ${KEYCLOAK_ADMIN_USERNAME} ${KEYCLOAK_ADMIN_PASSWORD} ${MLFLOW_TRACKING_URI} ${MLFLOW_EXPERIMENT_ID} ${MLFLOW_TLS_INSECURE}'
 
 for tpl in $(find "$REPO_ROOT/agents/openclaw/agents" -name '*.envsubst'); do
-  yaml="${tpl%.envsubst}"
-  envsubst "$ENVSUBST_VARS" < "$tpl" > "$yaml"
-  log_success "Generated $(basename "$yaml")"
+  rel="${tpl#$REPO_ROOT/}"
+  out="$GENERATED_DIR/${rel%.envsubst}"
+  mkdir -p "$(dirname "$out")"
+  envsubst "$ENVSUBST_VARS" < "$tpl" > "$out"
+  log_success "Generated $(basename "$out")"
 done
 echo ""
 
 # Deploy agent configuration (overlay config patch)
 if ! $K8S_MODE; then
   log_info "Deploying agent configuration..."
-  $KUBECTL apply -f "$REPO_ROOT/agents/openclaw/agents/agents-config-patch.yaml"
+  $KUBECTL apply -f "$GENERATED_DIR/agents/openclaw/agents/agents-config-patch.yaml"
   log_success "Agent configuration deployed"
   echo ""
 fi
@@ -197,7 +209,7 @@ fi
 # Auto-discover: find all *-agent.yaml files in agent subdirectories
 log_info "Deploying agent ConfigMaps..."
 AGENT_CM_COUNT=0
-for agent_yaml in "$REPO_ROOT/agents/openclaw/agents"/*/*-agent.yaml; do
+for agent_yaml in "$GENERATED_DIR/agents/openclaw/agents"/*/*-agent.yaml; do
   [ -f "$agent_yaml" ] || continue
   $KUBECTL apply -f "$agent_yaml"
   AGENT_CM_COUNT=$((AGENT_CM_COUNT + 1))
@@ -208,7 +220,7 @@ echo ""
 
 # Deploy NPS skill ConfigMap
 log_info "Deploying NPS skill..."
-$KUBECTL kustomize "$REPO_ROOT/agents/openclaw/skills" \
+$KUBECTL kustomize "$GENERATED_DIR/agents/openclaw/skills" \
   | sed "s/namespace: openclaw/namespace: $OPENCLAW_NAMESPACE/g" \
   | $KUBECTL apply -f -
 log_success "NPS skill ConfigMap deployed"
@@ -217,9 +229,9 @@ echo ""
 # Setup resource-optimizer RBAC (ServiceAccount + read-only access to resource-demo)
 log_info "Setting up resource-optimizer RBAC..."
 $KUBECTL create namespace resource-demo --dry-run=client -o yaml | $KUBECTL apply -f - > /dev/null
-$KUBECTL apply -f "$REPO_ROOT/agents/openclaw/agents/resource-optimizer/resource-optimizer-rbac.yaml"
+$KUBECTL apply -f "$GENERATED_DIR/agents/openclaw/agents/resource-optimizer/resource-optimizer-rbac.yaml"
 # Deploy demo workloads for resource-optimizer to analyze
-for demo in "$REPO_ROOT/agents/openclaw/agents/demo-workloads"/demo-*.yaml; do
+for demo in "$GENERATED_DIR/agents/openclaw/agents/demo-workloads"/demo-*.yaml; do
   [ -f "$demo" ] && $KUBECTL apply -f "$demo"
 done
 # Pre-create the resource-report-latest ConfigMap (CronJob will update it)
@@ -227,13 +239,13 @@ $KUBECTL create configmap resource-report-latest \
   --from-literal=report.txt="No report generated yet. The resource-report CronJob has not run." \
   -n "$OPENCLAW_NAMESPACE" --dry-run=client -o yaml | $KUBECTL apply -f -
 # Deploy K8s CronJob for resource reports (runs independently of the LLM)
-$KUBECTL apply -f "$REPO_ROOT/agents/openclaw/agents/resource-optimizer/resource-report-cronjob.yaml"
+$KUBECTL apply -f "$GENERATED_DIR/agents/openclaw/agents/resource-optimizer/resource-report-cronjob.yaml"
 log_success "Resource-optimizer RBAC, demo workloads, report ConfigMap, and CronJob applied"
 echo ""
 
 # Setup mlops-monitor RBAC and CronJob
 log_info "Setting up mlops-monitor..."
-$KUBECTL apply -f "$REPO_ROOT/agents/openclaw/agents/mlops-monitor/mlops-monitor-rbac.yaml"
+$KUBECTL apply -f "$GENERATED_DIR/agents/openclaw/agents/mlops-monitor/mlops-monitor-rbac.yaml"
 # Pre-create the mlops-report-latest ConfigMap (CronJob will update it)
 $KUBECTL create configmap mlops-report-latest \
   --from-literal=report.txt="No report generated yet. The mlops-report CronJob has not run." \
@@ -258,7 +270,7 @@ else
   log_warn "No MLflow URI set — mlops-monitor reports will show an error until configured"
 fi
 # Deploy CronJob
-$KUBECTL apply -f "$REPO_ROOT/agents/openclaw/agents/mlops-monitor/mlops-monitor-cronjob.yaml"
+$KUBECTL apply -f "$GENERATED_DIR/agents/openclaw/agents/mlops-monitor/mlops-monitor-cronjob.yaml"
 log_success "MLOps-monitor RBAC, report ConfigMap, and CronJob applied"
 echo ""
 
@@ -273,7 +285,7 @@ echo ""
 # Install agent workspace files (AGENTS.md, agent.json, SOUL.md, etc.) into each workspace
 # Auto-discover: find all deployed agent ConfigMaps and extract their agent ID
 log_info "Installing agent workspace files into workspaces..."
-for agent_yaml in "$REPO_ROOT/agents/openclaw/agents"/*/*-agent.yaml; do
+for agent_yaml in "$GENERATED_DIR/agents/openclaw/agents"/*/*-agent.yaml; do
   [ -f "$agent_yaml" ] || continue
   AGENT_DIR_NAME="$(basename "$(dirname "$agent_yaml")")"
   CM_NAME="${AGENT_DIR_NAME}-agent"
@@ -359,7 +371,7 @@ echo "║  Agent Setup Complete!                                     ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 echo "Agents deployed:"
-for agent_yaml in "$REPO_ROOT/agents/openclaw/agents"/*/*-agent.yaml; do
+for agent_yaml in "$GENERATED_DIR/agents/openclaw/agents"/*/*-agent.yaml; do
   [ -f "$agent_yaml" ] || continue
   dir_name="$(basename "$(dirname "$agent_yaml")")"
   if [ "$dir_name" = "shadowman" ]; then
@@ -371,7 +383,7 @@ for agent_yaml in "$REPO_ROOT/agents/openclaw/agents"/*/*-agent.yaml; do
 done
 echo ""
 echo "Cron jobs:"
-for job_file in "$REPO_ROOT/agents/openclaw/agents"/*/JOB.md; do
+for job_file in "$GENERATED_DIR/agents/openclaw/agents"/*/JOB.md; do
   [ -f "$job_file" ] || continue
   job_id=$(grep '^id:' "$job_file" | head -1 | sed 's/^id: *//')
   schedule=$(grep '^schedule:' "$job_file" | head -1 | sed 's/^schedule: *"*//; s/"*$//')

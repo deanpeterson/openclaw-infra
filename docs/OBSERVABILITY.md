@@ -269,36 +269,25 @@ This repository includes three OTEL collector sidecar configurations:
 
 ### Deploy OTEL Collector Sidecars
 
-**Note:** If you used `./scripts/setup.sh`, the `.envsubst` templates have already been processed and deployed.
+**Note:** If you used `./scripts/setup.sh`, the templates have already been processed into `generated/` and deployed.
 
 #### Option 1: Automated Deployment (Recommended)
 
-The setup script automatically runs `envsubst` on sidecar templates and deploys them:
+The setup script builds `generated/` with processed templates and deploys them:
 
 ```bash
 ./scripts/setup.sh
-# Generates from .envsubst templates:
-# - platform/observability/openclaw-otel-sidecar.yaml
-# - platform/observability/vllm-otel-sidecar.yaml
+# Generates into generated/platform/observability/:
+# - openclaw-otel-sidecar.yaml
+# - vllm-otel-sidecar.yaml
 ```
 
-#### Option 2: Manual Deployment
+#### Option 2: Standalone OTEL Deployment
 
-Run `envsubst` on templates and deploy:
+Use the dedicated script (outputs to `generated/`):
 
 ```bash
-# Source the generated secrets
-source .env && set -a
-
-# Generate YAML from templates
-ENVSUBST_VARS='${CLUSTER_DOMAIN} ${OPENCLAW_NAMESPACE}'
-for tpl in platform/observability/*.envsubst; do
-  envsubst "$ENVSUBST_VARS" < "$tpl" > "${tpl%.envsubst}"
-done
-
-# Deploy each sidecar configuration
-oc apply -f platform/observability/openclaw-otel-sidecar.yaml
-oc apply -f platform/observability/vllm-otel-sidecar.yaml
+./scripts/deploy-otelcollector.sh --env-file .env
 ```
 
 #### Verify Sidecar Configurations
@@ -385,23 +374,11 @@ oc logs -n openclaw -l app=openclaw -c otc-container
 
 **Automated (recommended):**
 ```bash
-# setup.sh runs envsubst on all templates automatically
+# setup.sh builds generated/ with all processed templates
 ./scripts/setup.sh
-```
 
-**Manual:**
-```bash
-# Source .env for all variables
-source .env
-
-# Generate YAML from templates
-for tpl in platform/observability/*.envsubst; do
-  envsubst '${CLUSTER_DOMAIN} ${OPENCLAW_NAMESPACE}' < "$tpl" > "${tpl%.envsubst}"
-done
-
-# Then deploy
-oc apply -f platform/observability/openclaw-otel-sidecar.yaml
-oc apply -f platform/observability/vllm-otel-sidecar.yaml
+# Or deploy OTEL only:
+./scripts/deploy-otelcollector.sh --env-file .env
 ```
 
 ### Verify Traces in MLflow

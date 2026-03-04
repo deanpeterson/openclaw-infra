@@ -70,12 +70,11 @@ Each agent gets an isolated workspace on the PVC:
 
 ### Config Lifecycle
 ```
-.envsubst template → envsubst → ConfigMap → init container → PVC
-(git-committed)      (setup.sh)  (K8s)       (pod restart)   (runtime)
+.envsubst template → generated/ → ConfigMap → init container → PVC
+(git-committed)      (setup.sh)   (K8s)       (pod restart)   (runtime)
 ```
 
-The init container overwrites `openclaw.json` on every pod restart.
-UI changes live only on the PVC and are lost unless exported and merged back into the `.envsubst` template.
+Setup scripts build a `generated/` directory that mirrors the source tree with templates processed. Kustomize and kubectl apply run from `generated/`. The init container overwrites `openclaw.json` on every pod restart. UI changes live only on the PVC and are lost unless exported and merged back into the `.envsubst` template.
 
 ### OpenTelemetry Observability
 - `diagnostics-otel` plugin emits OTLP traces from the gateway
@@ -108,9 +107,9 @@ See [A2A-ARCHITECTURE.md](A2A-ARCHITECTURE.md) for the full design, message flow
 1. setup.sh
    ├── Prompt for prefix, API keys
    ├── Generate secrets → .env
-   ├── envsubst on all .envsubst templates
+   ├── Build generated/ (rsync static + envsubst templates)
    ├── Create namespace
-   ├── Deploy via kustomize overlay (includes AuthBridge sidecars)
+   ├── Deploy via kustomize overlay from generated/ (includes AuthBridge sidecars)
    ├── Create OAuthClient (OpenShift only)
    └── Install A2A skill into agent workspace
 
@@ -119,8 +118,8 @@ See [A2A-ARCHITECTURE.md](A2A-ARCHITECTURE.md) for the full design, message flow
 
 3. setup-agents.sh (optional)
    ├── Prompt for agent name customization
-   ├── envsubst on agent templates
-   ├── Deploy agent ConfigMaps
+   ├── envsubst on agent templates → generated/
+   ├── Deploy agent ConfigMaps from generated/
    ├── Set up RBAC (resource-optimizer SA)
    ├── Install agent identity files into workspaces
    └── Configure cron jobs

@@ -12,11 +12,11 @@
 #
 # This script:
 #   - Reads .env for namespace and prefix configuration
-#   - Removes the auto-registered Keycloak client (SPIFFE ID)
 #   - Deletes all resources in namespace before deleting namespace
 #     (avoids finalizer hang during namespace deletion)
-#   - Removes cluster-scoped OAuthClients (OpenShift only)
+#   - Removes cluster-scoped OAuthClients and A2A ClusterRoleBindings (OpenShift only)
 #   - Strips finalizers from stuck namespaces
+#   - Removes generated/ directory
 #   - Optionally deletes .env
 #
 # If .env doesn't exist, you can set OPENCLAW_NAMESPACE manually:
@@ -160,72 +160,15 @@ teardown_namespace() {
   echo ""
 }
 
-# Teardown A2A / Keycloak resources (only if A2A was enabled)
+# A2A cleanup: remove cluster-scoped resources (OpenShift only)
+# Note: the AuthBridge auto-registers a Keycloak client using the SPIFFE ID.
+# That client becomes orphaned when the namespace is deleted, but it's harmless.
 A2A_ENABLED="${A2A_ENABLED:-false}"
-if [ "$A2A_ENABLED" = "true" ]; then
-  # Remove Keycloak client (auto-registered by AuthBridge using SPIFFE ID).
-  # Values come from .env (sourced above) or environment; fall back to defaults.
-  KC_NS="${KEYCLOAK_NAMESPACE:-keycloak}"
-  if [ -z "${KEYCLOAK_URL:-}" ]; then
-    # Auto-detect from route, then fall back to in-cluster
-    KC_ROUTE_HOST=$($KUBECTL get route keycloak -n "$KC_NS" -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
-    if [ -n "$KC_ROUTE_HOST" ]; then
-      KEYCLOAK_URL="https://${KC_ROUTE_HOST}"
-    else
-      KEYCLOAK_URL="http://keycloak-service.${KC_NS}.svc.cluster.local:8080"
-    fi
-  fi
-  KEYCLOAK_REALM="${KEYCLOAK_REALM:-demo}"
-  KEYCLOAK_ADMIN_USERNAME="${KEYCLOAK_ADMIN_USERNAME:-admin}"
-  KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
-  SPIFFE_CLIENT_ID="spiffe://demo.example.com/ns/${OPENCLAW_NAMESPACE}/sa/openclaw-oauth-proxy"
-
-  log_info "Removing Keycloak client for $OPENCLAW_NAMESPACE..."
-
-  # Get admin token
-  KC_TOKEN=$(curl -s --connect-timeout 5 -X POST \
-    "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
-    -d "grant_type=client_credentials&client_id=admin-cli" \
-    -d "grant_type=password&username=${KEYCLOAK_ADMIN_USERNAME}&password=${KEYCLOAK_ADMIN_PASSWORD}" \
-    -H "Content-Type: application/x-www-form-urlencoded" 2>/dev/null | jq -r '.access_token // empty')
-
-  if [ -n "$KC_TOKEN" ]; then
-    # URL-encode the SPIFFE ID (contains :// and /)
-    ENCODED_CLIENT_ID=$(printf '%s' "$SPIFFE_CLIENT_ID" | jq -sRr @uri)
-
-    # Look up the client by clientId
-    KC_CLIENT_UUID=$(curl -s \
-      "${KEYCLOAK_URL}/admin/realms/${KEYCLOAK_REALM}/clients?clientId=${ENCODED_CLIENT_ID}" \
-      -H "Authorization: Bearer ${KC_TOKEN}" 2>/dev/null | jq -r '.[0].id // empty')
-
-    if [ -n "$KC_CLIENT_UUID" ]; then
-      if curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-        "${KEYCLOAK_URL}/admin/realms/${KEYCLOAK_REALM}/clients/${KC_CLIENT_UUID}" \
-        -H "Authorization: Bearer ${KC_TOKEN}" 2>/dev/null | grep -q "204"; then
-        log_success "Keycloak client deleted: $SPIFFE_CLIENT_ID"
-      else
-        log_warn "Failed to delete Keycloak client (may need manual cleanup)"
-      fi
-    else
-      log_warn "Keycloak client not found: $SPIFFE_CLIENT_ID (already removed or never registered)"
-    fi
-  else
-    log_warn "Could not authenticate to Keycloak — skipping client cleanup"
-    log_warn "  Manually remove client: $SPIFFE_CLIENT_ID"
-    log_warn "  From realm: ${KEYCLOAK_REALM} at ${KEYCLOAK_URL}"
-  fi
-  echo ""
-
-  # Remove cluster-scoped A2A resources (OpenShift only)
-  if ! $K8S_MODE; then
-    log_info "Removing SCC ClusterRoleBinding..."
-    $KUBECTL delete clusterrolebinding "openclaw-authbridge-scc-${OPENCLAW_NAMESPACE}" 2>/dev/null && \
-      log_success "ClusterRoleBinding openclaw-authbridge-scc-${OPENCLAW_NAMESPACE} deleted" || \
-      log_warn "ClusterRoleBinding not found (already removed)"
-    echo ""
-  fi
-else
-  log_info "A2A was not enabled — skipping Keycloak/SCC cleanup"
+if [ "$A2A_ENABLED" = "true" ] && ! $K8S_MODE; then
+  log_info "Removing A2A SCC ClusterRoleBinding..."
+  $KUBECTL delete clusterrolebinding "openclaw-authbridge-scc-${OPENCLAW_NAMESPACE}" 2>/dev/null && \
+    log_success "ClusterRoleBinding openclaw-authbridge-scc-${OPENCLAW_NAMESPACE} deleted" || \
+    log_warn "ClusterRoleBinding not found (already removed)"
   echo ""
 fi
 
@@ -250,20 +193,13 @@ elif [ -f "$ENV_FILE" ]; then
   echo ""
 fi
 
-# Clean up generated YAML files (from envsubst)
-log_info "Cleaning up generated YAML files..."
-generated=0
-for tpl in $(find "$REPO_ROOT/agents" "$REPO_ROOT/platform" "$REPO_ROOT/manifests" -name '*.envsubst' 2>/dev/null); do
-  yaml="${tpl%.envsubst}"
-  if [ -f "$yaml" ]; then
-    rm "$yaml"
-    generated=$((generated + 1))
-  fi
-done
-if [ $generated -gt 0 ]; then
-  log_success "Removed $generated generated YAML files"
+# Clean up generated/ directory
+if [ -d "$REPO_ROOT/generated" ]; then
+  log_info "Cleaning up generated/ directory..."
+  rm -rf "$REPO_ROOT/generated"
+  log_success "Removed generated/ directory"
 else
-  log_info "No generated YAML files to clean up"
+  log_info "No generated/ directory to clean up"
 fi
 echo ""
 

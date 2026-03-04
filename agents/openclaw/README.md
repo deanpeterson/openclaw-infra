@@ -28,16 +28,25 @@ export CLUSTER_DOMAIN=$(oc get ingresses.config/cluster -o jsonpath='{.spec.doma
 export SHADOWMAN_CUSTOM_NAME="shadowman"
 export SHADOWMAN_DISPLAY_NAME="Shadowman"
 
-# 2. Run envsubst on OpenClaw templates
+# 2. Build generated/ directory with processed templates
+GENERATED_DIR="../../generated"
+rm -rf "$GENERATED_DIR"
+mkdir -p "$GENERATED_DIR"
+rsync -a --exclude='*.envsubst' ../../agents/ "$GENERATED_DIR/agents/"
+rsync -a --exclude='*.envsubst' ../../platform/ "$GENERATED_DIR/platform/"
+
 ENVSUBST_VARS='${CLUSTER_DOMAIN} ${OPENCLAW_PREFIX} ${OPENCLAW_NAMESPACE} ${OPENCLAW_GATEWAY_TOKEN} ${OPENCLAW_OAUTH_CLIENT_SECRET} ${OPENCLAW_OAUTH_COOKIE_SECRET} ${ANTHROPIC_API_KEY} ${SHADOWMAN_CUSTOM_NAME} ${SHADOWMAN_DISPLAY_NAME} ${MODEL_ENDPOINT} ${DEFAULT_AGENT_MODEL} ${GOOGLE_CLOUD_PROJECT} ${GOOGLE_CLOUD_LOCATION}'
-for tpl in overlays/openshift/*.envsubst; do
-  envsubst "$ENVSUBST_VARS" < "$tpl" > "${tpl%.envsubst}"
+for tpl in $(find ../../agents ../../platform -name '*.envsubst'); do
+  rel="${tpl#../../}"
+  out="$GENERATED_DIR/${rel%.envsubst}"
+  mkdir -p "$(dirname "$out")"
+  envsubst "$ENVSUBST_VARS" < "$tpl" > "$out"
 done
 
-# 3. Create namespace and deploy
+# 3. Create namespace and deploy from generated/
 oc create namespace "$OPENCLAW_NAMESPACE" --dry-run=client -o yaml | oc apply -f -
-oc apply -f overlays/openshift/oauthclient.yaml   # Requires cluster-admin
-oc apply -k overlays/openshift/
+oc apply -f "$GENERATED_DIR/platform/overlays/openshift/oauthclient.yaml"   # Requires cluster-admin
+oc apply -k "$GENERATED_DIR/agents/openclaw/overlays/openshift/"
 
 # 4. Verify
 oc rollout status deployment/openclaw -n "$OPENCLAW_NAMESPACE" --timeout=300s
@@ -58,15 +67,12 @@ export CLUSTER_DOMAIN="" OPENCLAW_OAUTH_CLIENT_SECRET=""
 export OPENCLAW_OAUTH_COOKIE_SECRET=""
 export ANTHROPIC_API_KEY=""
 
-# 2. Run envsubst on K8s templates
-ENVSUBST_VARS='${CLUSTER_DOMAIN} ${OPENCLAW_PREFIX} ${OPENCLAW_NAMESPACE} ${OPENCLAW_GATEWAY_TOKEN} ${OPENCLAW_OAUTH_CLIENT_SECRET} ${OPENCLAW_OAUTH_COOKIE_SECRET} ${ANTHROPIC_API_KEY} ${SHADOWMAN_CUSTOM_NAME} ${SHADOWMAN_DISPLAY_NAME} ${MODEL_ENDPOINT} ${DEFAULT_AGENT_MODEL} ${GOOGLE_CLOUD_PROJECT} ${GOOGLE_CLOUD_LOCATION}'
-for tpl in overlays/k8s/*.envsubst; do
-  envsubst "$ENVSUBST_VARS" < "$tpl" > "${tpl%.envsubst}"
-done
+# 2. Build generated/ directory (see OpenShift section above for full envsubst setup)
+# ... same rsync + envsubst loop as above ...
 
-# 3. Create namespace and deploy
+# 3. Create namespace and deploy from generated/
 kubectl create namespace "$OPENCLAW_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -k overlays/k8s/
+kubectl apply -k "$GENERATED_DIR/agents/openclaw/overlays/k8s/"
 
 # 4. Access via port-forward
 kubectl rollout status deployment/openclaw -n "$OPENCLAW_NAMESPACE" --timeout=300s

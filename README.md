@@ -1,4 +1,4 @@
-# openclaw-infra
+# openclaw-k8s
 
 Deploy [OpenClaw](https://github.com/openclaw) on Kubernetes, OpenShift, and standalone Linux machines.
 
@@ -69,6 +69,7 @@ kubectl port-forward svc/openclaw 18789:18789 -n <prefix>-openclaw
 | `./scripts/export-config.sh` | Export live config from running pod |
 | `./scripts/update-jobs.sh` | Update cron jobs without full re-deploy |
 | `./scripts/teardown.sh` | Remove everything |
+| `./scripts/cleanup-legacy-generated.sh` | Remove old in-place generated files |
 
 All scripts accept `--k8s` for vanilla Kubernetes.
 
@@ -129,10 +130,10 @@ See [agents/openclaw/edge/README.md](agents/openclaw/edge/README.md) for setup a
 ## Configuration Management
 
 ```
-.envsubst template          ConfigMap              PVC (live config)
-(source of truth)    -->    (K8s object)    -->    /home/node/.openclaw/openclaw.json
-                          setup.sh runs           init container copies
-                          envsubst + deploy       on every pod restart
+.envsubst template    -->    generated/     -->    ConfigMap    -->    PVC (live config)
+(source of truth)          (envsubst output)     (K8s object)       /home/node/.openclaw/openclaw.json
+                           setup.sh builds                          init container copies
+                           this directory                           on every pod restart
 ```
 
 The init container overwrites config on every pod restart. Export before restarting:
@@ -144,7 +145,7 @@ The init container overwrites config on every pod restart. Export before restart
 ## Repository Structure
 
 ```
-openclaw-infra/
+openclaw-k8s/
 ├── platform/                   # Generic trusted A2A network platform
 │   ├── base/                   # Namespace scaffolding, RBAC, quotas, PVCs, PDB
 │   ├── auth-identity-bridge/   # AgentCard CR + SCC (Kagenti webhook handles sidecars)
@@ -168,6 +169,7 @@ openclaw-infra/
 │   ├── nps-agent/              # NPS Agent (own namespace + identity)
 │   └── _template/              # Skeleton for new agent implementations
 │
+├── generated/                  # Envsubst output — mirror of agents/ + platform/ (git-ignored)
 ├── scripts/                    # K8s/OpenShift deployment scripts
 └── docs/
     ├── FLEET.md                # Fleet management architecture

@@ -23,7 +23,7 @@ OpenClaw agents need an LLM endpoint. You have several options:
 
 ```bash
 git clone <this-repo>
-cd openclaw-infra
+cd openclaw-k8s
 
 ./scripts/setup.sh           # OpenShift
 ./scripts/setup.sh --k8s     # Kubernetes (KinD, minikube, etc.)
@@ -82,13 +82,20 @@ This requires SPIRE + Keycloak infrastructure on your cluster. The script will p
 - **AuthBridge** sidecars (SPIFFE + Envoy) for transparent zero-trust identity
 - An **A2A skill** so your agent knows how to talk to other instances
 
-On **OpenShift**, the AuthBridge sidecars need a custom SCC. Ask your admin to run:
-```bash
-oc adm policy add-scc-to-user openclaw-authbridge \
-  -z openclaw-oauth-proxy -n <prefix>-openclaw
-```
+On **OpenShift**, `setup.sh --with-a2a` automatically applies the AuthBridge SCC and RBAC grant. If it fails (needs cluster-admin), the script prints the exact commands to give your admin.
 
 See [A2A-ARCHITECTURE.md](A2A-ARCHITECTURE.md) for the full architecture.
+
+## Upgrading from a Previous Clone
+
+If you cloned before the `generated/` directory change, you may have old generated `.yaml` files sitting next to their `.envsubst` templates. These are harmless (`.gitignore` covers them) but you can clean them up:
+
+```bash
+./scripts/cleanup-legacy-generated.sh            # Dry run — shows what would be deleted
+./scripts/cleanup-legacy-generated.sh --delete    # Actually delete them
+```
+
+Then re-run `setup.sh` to rebuild everything into `generated/`.
 
 ## Create Your Own Agent
 
