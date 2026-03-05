@@ -149,7 +149,7 @@ spec:
             drop:
             - ALL
       - name: gateway
-        image: quay.io/sallyom/openclaw:latest
+        image: ${OPENCLAW_IMAGE}
         imagePullPolicy: Always
         command:
         - node
