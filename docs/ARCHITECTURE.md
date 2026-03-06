@@ -2,10 +2,32 @@
 
 ## Overview
 
-OpenClaw is an AI agent runtime platform. This repo deploys it on Kubernetes (OpenShift or vanilla K8s) with per-user namespaces,
-OpenTelemetry observability, and security hardening.
+OpenClaw is a self-hosted gateway connecting chat apps (WhatsApp, Telegram, Discord, iMessage, and more) to AI agents. It ships with **Pi**, an AI agent runtime that handles tool use, sessions, memory, and reasoning. The Gateway hosts one or more Pi agents, each customized with their own persona, tool permissions, and model. This repo deploys OpenClaw on OpenShift, Kubernetes, and bare-metal edge machines — same agent runtime everywhere, different configurations per environment.
 
-## Architecture
+### How OpenClaw Works
+
+```
+Chat Apps (WhatsApp, Telegram, Discord, iMessage, ...)
+        │
+        ▼
+   ┌─────────────┐
+   │   Gateway    │  Single self-hosted process
+   │   :18789     │  Source of truth for sessions, routing, channels
+   └──────┬──────┘
+          │
+    ┌─────┼──────────────────────┐
+    ▼     ▼                      ▼
+  Pi    CLI / Web Control UI   Mobile Nodes
+(agents)  (management)         (iOS/Android)
+```
+
+- **Gateway** — the central hub that bridges chat apps to agents, manages sessions and routing, and serves the web Control UI
+- **Pi** — the agent runtime that ships with OpenClaw. All agents are Pi instances. When you customize an agent with AGENTS.md, tool allowlists, and a model config, you're configuring Pi — not replacing it
+- **Agents** — customized Pi instances, each with their own identity (AGENTS.md), workspace, tools, model, and cron schedule
+
+Pi is to agents what a web server is to sites: Pi is the engine, your AGENTS.md is the config.
+
+## Deployment Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
