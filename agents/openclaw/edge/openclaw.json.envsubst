@@ -48,7 +48,8 @@
       "security": "allowlist",
       "safeBins": ["df", "free", "ps", "uptime", "uname",
                    "cat", "grep", "ls", "wc", "date",
-                   "findmnt", "lsblk", "hostname"],
+                   "findmnt", "lsblk", "hostname",
+                   "curl", "jq", "grype"],
       "safeBinProfiles": {
         "df": {},
         "free": {},
@@ -62,7 +63,10 @@
         "date": {},
         "findmnt": {},
         "lsblk": {},
-        "hostname": {}
+        "hostname": {},
+        "curl": {"deniedFlags": ["-o", "--output", "-O", "--remote-name", "--upload-file", "-T"]},
+        "jq": {},
+        "grype": {}
       },
       "timeoutSec": 30
     }
@@ -82,5 +86,5 @@
       }
     ]
   },
-  "cron": {"enabled": false}
+  "cron": {"enabled": true}
 }

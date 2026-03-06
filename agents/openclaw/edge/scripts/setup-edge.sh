@@ -314,7 +314,10 @@ OPENCLAW_IMAGE="$OPENCLAW_IMAGE"
 EOF
 log_success "Saved .env.edge"
 
-# ── Generate openclaw.json ─────────────────────────────────────────────────
+# ── Generate config files ──────────────────────────────────────────────────
+GENERATED_DIR="$EDGE_ROOT/generated"
+mkdir -p "$GENERATED_DIR"
+
 log_info "Generating openclaw.json..."
 
 ENVSUBST_VARS='${AGENT_ID} ${AGENT_NAME} ${OPENCLAW_GATEWAY_TOKEN}'
@@ -325,8 +328,8 @@ export AGENT_ID AGENT_NAME OPENCLAW_GATEWAY_TOKEN
 export MODEL_ENDPOINT MODEL_API MODEL_API_KEY MODEL_ID MODEL_NAME
 export OTEL_ENABLED OTEL_ENDPOINT
 
-GENERATED_CONFIG="$EDGE_ROOT/config/openclaw.json"
-envsubst "$ENVSUBST_VARS" < "$EDGE_ROOT/config/openclaw.json.envsubst" > "$GENERATED_CONFIG"
+GENERATED_CONFIG="$EDGE_ROOT/generated/openclaw.json"
+envsubst "$ENVSUBST_VARS" < "$EDGE_ROOT/openclaw.json.envsubst" > "$GENERATED_CONFIG"
 
 # Inject extra provider if API key was provided
 # The API key is passed via environment variable (not stored in config JSON)
@@ -366,7 +369,7 @@ with open('$GENERATED_CONFIG', 'w') as f:
 "
   log_success "Anthropic provider added (key via env var, local model as fallback)"
 fi
-log_success "Generated config/openclaw.json"
+log_success "Generated generated/openclaw.json"
 
 # ── Generate AGENTS.md and agent.json ─────────────────────────────────────
 log_info "Generating agent files..."
@@ -374,10 +377,10 @@ log_info "Generating agent files..."
 AGENT_ENVSUBST_VARS='${AGENT_ID} ${AGENT_NAME} ${HOSTNAME}'
 export HOSTNAME
 
-GENERATED_AGENTS_MD="$EDGE_ROOT/config/AGENTS.md"
-envsubst "$AGENT_ENVSUBST_VARS" < "$EDGE_ROOT/config/AGENTS.md.envsubst" > "$GENERATED_AGENTS_MD"
+GENERATED_AGENTS_MD="$EDGE_ROOT/generated/AGENTS.md"
+envsubst "$AGENT_ENVSUBST_VARS" < "$EDGE_ROOT/AGENTS.md.envsubst" > "$GENERATED_AGENTS_MD"
 
-GENERATED_AGENT_JSON="$EDGE_ROOT/config/agent.json"
+GENERATED_AGENT_JSON="$EDGE_ROOT/generated/agent.json"
 cat > "$GENERATED_AGENT_JSON" <<EOF
 {
   "name": "$AGENT_ID",
@@ -391,27 +394,50 @@ cat > "$GENERATED_AGENT_JSON" <<EOF
 }
 EOF
 
-log_success "Generated config/AGENTS.md and config/agent.json"
+log_success "Generated generated/AGENTS.md and config/agent.json"
+
+# ── Generate cron jobs.json ───────────────────────────────────────────────
+log_info "Generating cron jobs..."
+GENERATED_JOBS="$EDGE_ROOT/generated/jobs.json"
+cat > "$GENERATED_JOBS" <<JOBS_EOF
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "cve-scan",
+      "agentId": "$AGENT_ID",
+      "schedule": {"kind": "cron", "expr": "0 */6 * * *", "tz": "UTC"},
+      "sessionTarget": "isolated",
+      "delivery": { "mode": "none" },
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "List all container images on this host using the podman socket. Then scan each image with grype for CVEs. Report a summary: total images scanned, any Critical or High severity vulnerabilities with fixes available. If everything is clean, say so briefly."
+      }
+    }
+  ]
+}
+JOBS_EOF
+log_success "Generated generated/jobs.json (CVE scan every 6 hours)"
 
 # Generate OTEL collector config if enabled
 if [ "$OTEL_ENABLED" = "true" ]; then
   OTEL_ENVSUBST_VARS='${HOSTNAME} ${MLFLOW_OTLP_ENDPOINT} ${MLFLOW_EXPERIMENT_ID} ${MLFLOW_TLS_INSECURE}'
   export MLFLOW_OTLP_ENDPOINT MLFLOW_EXPERIMENT_ID MLFLOW_TLS_INSECURE
 
-  GENERATED_OTEL_CONFIG="$EDGE_ROOT/config/otel-collector-config.yaml"
-  envsubst "$OTEL_ENVSUBST_VARS" < "$EDGE_ROOT/config/otel-collector-config.yaml.envsubst" > "$GENERATED_OTEL_CONFIG"
-  log_success "Generated config/otel-collector-config.yaml"
+  GENERATED_OTEL_CONFIG="$EDGE_ROOT/generated/otel-collector-config.yaml"
+  envsubst "$OTEL_ENVSUBST_VARS" < "$EDGE_ROOT/../../../platform/edge/otel-collector-config.yaml.envsubst" > "$GENERATED_OTEL_CONFIG"
+  log_success "Generated generated/otel-collector-config.yaml"
 fi
 
 # ── Generate Kube YAML files ──────────────────────────────────────────────
 log_info "Generating Kube YAML files..."
 
-GENERATED_DIR="$EDGE_ROOT/generated"
-mkdir -p "$GENERATED_DIR"
-
-# --- Pod YAML (envsubst for image name) ---
+# --- Pod YAML (envsubst for image name + host paths) ---
 export OPENCLAW_IMAGE
-envsubst '${OPENCLAW_IMAGE}' < "$EDGE_ROOT/quadlet/openclaw-agent-pod.yaml.envsubst" > "$GENERATED_DIR/openclaw-agent-pod.yaml"
+export PODMAN_SOCKET_PATH="/run/user/$(id -u)/podman/podman.sock"
+export GRYPE_BIN_PATH="${HOME}/.local/bin/grype"
+envsubst '${OPENCLAW_IMAGE} ${PODMAN_SOCKET_PATH} ${GRYPE_BIN_PATH}' < "$EDGE_ROOT/openclaw-agent-pod.yaml.envsubst" > "$GENERATED_DIR/openclaw-agent-pod.yaml"
 
 # --- ConfigMap: openclaw.json (embed generated JSON into YAML) ---
 cat > "$GENERATED_DIR/openclaw-agent-config.yaml" <<CONFIGMAP_EOF
@@ -426,7 +452,7 @@ CONFIGMAP_EOF
 
 # --- ConfigMap: gateway token + API keys (podman doesn't support Secret in --configmap) ---
 export OPENCLAW_GATEWAY_TOKEN ANTHROPIC_API_KEY
-envsubst '${OPENCLAW_GATEWAY_TOKEN} ${ANTHROPIC_API_KEY}' < "$EDGE_ROOT/quadlet/openclaw-agent-secret.yaml.envsubst" > "$GENERATED_DIR/openclaw-agent-secret.yaml"
+envsubst '${OPENCLAW_GATEWAY_TOKEN} ${ANTHROPIC_API_KEY}' < "$EDGE_ROOT/openclaw-agent-secret.yaml.envsubst" > "$GENERATED_DIR/openclaw-agent-secret.yaml"
 
 # --- ConfigMap: AGENTS.md + agent.json (embed into YAML) ---
 cat > "$GENERATED_DIR/openclaw-agent-agents.yaml" <<AGENTS_EOF
@@ -439,6 +465,8 @@ data:
 $(cat "$GENERATED_AGENTS_MD" | indent_yaml)
   agent.json: |
 $(cat "$GENERATED_AGENT_JSON" | indent_yaml)
+  jobs.json: |
+$(cat "$GENERATED_JOBS" | indent_yaml)
 AGENTS_EOF
 
 log_success "Generated openclaw-agent Pod YAML, ConfigMap, Secret, and Agents"
@@ -446,7 +474,7 @@ log_success "Generated openclaw-agent Pod YAML, ConfigMap, Secret, and Agents"
 # --- OTEL collector (if enabled) ---
 if [ "$OTEL_ENABLED" = "true" ]; then
   export OTEL_COLLECTOR_IMAGE
-  envsubst '${OTEL_COLLECTOR_IMAGE}' < "$EDGE_ROOT/quadlet/otel-collector-pod.yaml.envsubst" > "$GENERATED_DIR/otel-collector-pod.yaml"
+  envsubst '${OTEL_COLLECTOR_IMAGE}' < "$EDGE_ROOT/../../../platform/edge/otel-collector-pod.yaml.envsubst" > "$GENERATED_DIR/otel-collector-pod.yaml"
 
   cat > "$GENERATED_DIR/otel-collector-config.yaml" <<OTEL_CM_EOF
 apiVersion: v1
@@ -471,7 +499,7 @@ rm -f "$QUADLET_DIR/otel-collector.container"
 rm -f "$QUADLET_DIR/otel-collector-config.volume"
 
 # Install .kube file (static, no substitution needed)
-cp "$EDGE_ROOT/quadlet/openclaw-agent.kube" "$QUADLET_DIR/openclaw-agent.kube"
+cp "$EDGE_ROOT/openclaw-agent.kube" "$QUADLET_DIR/openclaw-agent.kube"
 
 # Install generated YAML files alongside the .kube file
 cp "$GENERATED_DIR/openclaw-agent-pod.yaml" "$QUADLET_DIR/openclaw-agent-pod.yaml"
@@ -481,7 +509,7 @@ cp "$GENERATED_DIR/openclaw-agent-agents.yaml" "$QUADLET_DIR/openclaw-agent-agen
 
 # Install OTEL collector Quadlet if enabled
 if [ "$OTEL_ENABLED" = "true" ]; then
-  cp "$EDGE_ROOT/quadlet/otel-collector.kube" "$QUADLET_DIR/otel-collector.kube"
+  cp "$EDGE_ROOT/../../../platform/edge/otel-collector.kube" "$QUADLET_DIR/otel-collector.kube"
   cp "$GENERATED_DIR/otel-collector-pod.yaml" "$QUADLET_DIR/otel-collector-pod.yaml"
   cp "$GENERATED_DIR/otel-collector-config.yaml" "$QUADLET_DIR/otel-collector-config.yaml"
 fi
@@ -496,6 +524,34 @@ log_success "Image pulled: $OPENCLAW_IMAGE"
 if [ "$OTEL_ENABLED" = "true" ]; then
   podman pull "$OTEL_COLLECTOR_IMAGE"
   log_success "Image pulled: $OTEL_COLLECTOR_IMAGE"
+fi
+
+# ── Install grype (CVE scanner) ────────────────────────────────────────────
+if ! command -v grype &>/dev/null && [ ! -f "$HOME/.local/bin/grype" ]; then
+  log_info "Installing grype (container image CVE scanner)..."
+  mkdir -p "$HOME/.local/bin"
+  GRYPE_VERSION=$(curl -s https://api.github.com/repos/anchore/grype/releases/latest | grep tag_name | sed 's/.*"v//;s/".*//')
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    x86_64)  GRYPE_ARCH="amd64" ;;
+    aarch64) GRYPE_ARCH="arm64" ;;
+    *)       GRYPE_ARCH="$ARCH" ;;
+  esac
+  curl -sL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_${GRYPE_ARCH}.tar.gz" | \
+    tar xz -C "$HOME/.local/bin" grype
+  chmod +x "$HOME/.local/bin/grype"
+  log_success "Installed grype v${GRYPE_VERSION} to ~/.local/bin/grype"
+else
+  log_success "grype already installed"
+fi
+
+# ── Enable podman socket ──────────────────────────────────────────────────
+if ! systemctl --user is-active podman.socket &>/dev/null; then
+  log_info "Enabling podman socket for container image API access..."
+  systemctl --user enable --now podman.socket
+  log_success "Podman socket enabled at /run/user/$(id -u)/podman/podman.sock"
+else
+  log_success "Podman socket already active"
 fi
 
 # ── Enable lingering ──────────────────────────────────────────────────────

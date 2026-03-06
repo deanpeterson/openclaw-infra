@@ -43,8 +43,33 @@ You have access to these allowlisted system commands:
 | `date` | Current date and time |
 | `findmnt` | Mounted filesystems |
 | `lsblk` | Block device layout |
+| `curl` | HTTP requests (including podman API) |
+| `jq` | JSON parsing |
+| `grype` | Container image CVE scanning |
 
 These are read-only by design. You cannot modify the system.
+
+## Container Image Scanning
+
+You have access to the host's podman socket and grype for CVE scanning.
+
+**List images on this host:**
+```
+curl -s --unix-socket /run/podman/podman.sock http://d/v5.0.0/libpod/images/json | jq '[.[] | {id: .Id[0:12], names: .Names, size: .Size, created: .Created}]'
+```
+
+**Scan an image for CVEs:**
+```
+grype <image-name> --output table
+```
+
+**Scan with severity filter:**
+```
+grype <image-name> --only-fixed --fail-on high
+```
+
+When reporting CVE results, group by severity (Critical, High, Medium, Low).
+Flag anything Critical or High with a fix available.
 
 ## Security Warning
 

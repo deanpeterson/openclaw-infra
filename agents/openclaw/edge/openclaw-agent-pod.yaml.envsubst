@@ -14,13 +14,17 @@ spec:
           # Copy openclaw.json from ConfigMap into the PVC
           cp /config/openclaw.json /home/node/.openclaw/openclaw.json
 
-          # Create workspace and agent directories
+          # Create workspace, agent, and cron directories
           mkdir -p /home/node/.openclaw/workspace
           mkdir -p /home/node/.openclaw/agents
+          mkdir -p /home/node/.openclaw/cron
 
           # Copy agent files from ConfigMap into workspace (always overwrite — config is source of truth)
           cp /agents/AGENTS.md /home/node/.openclaw/workspace/AGENTS.md
           cp /agents/agent.json /home/node/.openclaw/workspace/agent.json
+
+          # Copy cron jobs if present
+          cp /agents/jobs.json /home/node/.openclaw/cron/jobs.json 2>/dev/null || true
 
           # Fix permissions for rootless container (uid 1000)
           chmod -R 775 /home/node/.openclaw
@@ -43,6 +47,10 @@ spec:
       env:
         - name: NODE_ENV
           value: production
+        - name: OPENCLAW_STATE_DIR
+          value: /home/node/.openclaw
+        - name: OPENCLAW_CONFIG_DIR
+          value: /home/node/.openclaw
         - name: OPENCLAW_GATEWAY_TOKEN
           valueFrom:
             configMapKeyRef:
@@ -60,6 +68,12 @@ spec:
       volumeMounts:
         - name: openclaw-data
           mountPath: /home/node/.openclaw
+        - name: podman-socket
+          mountPath: /run/podman/podman.sock
+          readOnly: true
+        - name: grype-bin
+          mountPath: /usr/local/bin/grype
+          readOnly: true
   volumes:
     - name: openclaw-data
       persistentVolumeClaim:
@@ -70,3 +84,11 @@ spec:
     - name: openclaw-agents
       configMap:
         name: openclaw-agent-agents
+    - name: podman-socket
+      hostPath:
+        path: ${PODMAN_SOCKET_PATH}
+        type: Socket
+    - name: grype-bin
+      hostPath:
+        path: ${GRYPE_BIN_PATH}
+        type: File
