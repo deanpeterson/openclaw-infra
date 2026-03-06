@@ -28,7 +28,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Defaults
 KAGENTI_REPO="${KAGENTI_REPO:-}"
-KC_REALM="${KEYCLOAK_REALM:-demo}"
+KC_REALM="${KEYCLOAK_REALM:-}"
 KC_NAMESPACE="${KEYCLOAK_NAMESPACE:-keycloak}"
 SKIP_OVN_PATCH=false
 SKIP_MCP_GATEWAY=false
@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --kagenti-repo PATH       Path to local kagenti repo clone"
-      echo "  --realm REALM             Keycloak realm (default: demo, or \$KEYCLOAK_REALM)"
+      echo "  --realm REALM             Keycloak realm (required, or \$KEYCLOAK_REALM)"
       echo "  --keycloak-namespace NS   Keycloak namespace (default: keycloak, or \$KEYCLOAK_NAMESPACE)"
       echo "  --skip-ovn-patch          Skip OVN gateway routing patch"
       echo "  --skip-mcp-gateway        Skip MCP Gateway installation"
@@ -74,6 +74,12 @@ while [[ $# -gt 0 ]]; do
     *) log_error "Unknown option: $1"; exit 1 ;;
   esac
 done
+
+if [ -z "$KC_REALM" ]; then
+  log_error "--realm is required (e.g., --realm nerc)"
+  echo "  Set \$KEYCLOAK_REALM or pass --realm <name>"
+  exit 1
+fi
 
 run_cmd() {
   if $DRY_RUN; then
