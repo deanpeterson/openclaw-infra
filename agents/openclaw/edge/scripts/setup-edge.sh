@@ -285,8 +285,9 @@ echo ""
 if $_ENV_REUSE && [ -n "${OPENCLAW_IMAGE:-}" ]; then
   log_success "Image: $OPENCLAW_IMAGE"
 else
-  read -p "  OpenClaw container image [quay.io/aicatalyst/openclaw:latest]: " OPENCLAW_IMAGE
-  OPENCLAW_IMAGE="${OPENCLAW_IMAGE:-quay.io/aicatalyst/openclaw:latest}"
+  # TODO: switch to quay.io/aicatalyst/openclaw:latest once GH Actions CI is set up
+  read -p "  OpenClaw container image [quay.io/sallyom/openclaw:latest]: " OPENCLAW_IMAGE
+  OPENCLAW_IMAGE="${OPENCLAW_IMAGE:-quay.io/sallyom/openclaw:latest}"
 fi
 echo ""
 

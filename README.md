@@ -3,6 +3,8 @@
 Deploy [OpenClaw](https://github.com/openclaw) on Kubernetes, OpenShift, and standalone Linux machines.
 
 > All deployments use the `quay.io/aicatalyst/openclaw:latest` container image, which tracks upstream `openclaw/openclaw` main and adds full OpenTelemetry instrumentation via the `diagnostics-otel` extension. This ensures every agent action — tool calls, LLM inference, message lifecycle — is traced end-to-end in MLflow.
+>
+> **Note:** Until GitHub Actions CI is set up for automated builds, deployments default to `quay.io/sallyom/openclaw:latest`. Override via `OPENCLAW_IMAGE` env var.
 
 ## Deployment Targets
 
@@ -73,22 +75,23 @@ All scripts accept `--k8s` for vanilla Kubernetes.
 
 ### Adding Agents
 
-Write agent instructions with your AI assistant, then deploy with one command:
+To create an agent, you write one file — `AGENTS.md` — the agent's instructions. Everything else is generated automatically.
 
 ```bash
-# AI creates the files in agents/openclaw/agents/repo-watcher/
-./scripts/add-agent.sh repo-watcher
+# Scaffold, then edit AGENTS.md.envsubst with your agent's instructions
+./scripts/add-agent.sh --scaffold-only example-agent "Example Agent" "Monitors system health"
+
+# Deploy (generates metadata + ConfigMap, registers, restarts)
+./scripts/add-agent.sh example-agent
 ```
 
-The included `repo-watcher` agent monitors the openclaw/openclaw GitHub repo
-for recent commits and PRs every 2 hours, using `curl` and `jq` against the
-public GitHub API. It's a good starting point for your own agents.
-
-Or scaffold from the template interactively:
+Or do it all interactively:
 
 ```bash
 ./scripts/add-agent.sh
 ```
+
+The included `repo-watcher` agent is a good reference — see `agents/openclaw/agents/repo-watcher/AGENTS.md.envsubst`.
 
 See [docs/TEAMMATE-QUICKSTART.md](docs/TEAMMATE-QUICKSTART.md) for the full walkthrough and [agents/openclaw/agents/_template/README.md](agents/openclaw/agents/_template/README.md) for the template reference.
 

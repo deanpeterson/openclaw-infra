@@ -101,25 +101,77 @@ AGENT_ID=$(echo "$AGENT_ID" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '
 
 SKIP_SCAFFOLD=false
 if [ -d "$AGENTS_DIR/$AGENT_ID" ]; then
-  if [ -f "$AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst" ]; then
+  if [ -f "$AGENTS_DIR/$AGENT_ID/AGENTS.md.envsubst" ]; then
     log_info "Found existing agent: $AGENTS_DIR/$AGENT_ID/"
     log_info "Skipping scaffold, deploying existing agent files."
     SKIP_SCAFFOLD=true
 
-    # Pull display name and description from existing template if not provided
+    # Extract display name and description from AGENTS.md frontmatter
     if [ -z "$DISPLAY_NAME" ]; then
-      DISPLAY_NAME=$(grep -m1 'display_name' "$AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst" \
-        | sed 's/.*"display_name": *"//;s/".*//' 2>/dev/null) || true
+      if [ -f "$AGENTS_DIR/$AGENT_ID/agent.json.envsubst" ]; then
+        DISPLAY_NAME=$(grep -m1 'display_name' "$AGENTS_DIR/$AGENT_ID/agent.json.envsubst" \
+          | sed 's/.*"display_name": *"//;s/".*//' 2>/dev/null) || true
+      fi
+      # Fallback: extract from AGENTS.md first heading
+      if [ -z "$DISPLAY_NAME" ]; then
+        DISPLAY_NAME=$(grep -m1 '^# ' "$AGENTS_DIR/$AGENT_ID/AGENTS.md.envsubst" \
+          | sed 's/^# //' 2>/dev/null) || true
+      fi
       DISPLAY_NAME="${DISPLAY_NAME:-$AGENT_ID}"
     fi
     if [ -z "$DESCRIPTION" ]; then
-      DESCRIPTION=$(grep -m1 'description' "$AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst" \
-        | head -1 | sed 's/.*"description": *"//;s/".*//' 2>/dev/null) || true
+      if [ -f "$AGENTS_DIR/$AGENT_ID/agent.json.envsubst" ]; then
+        DESCRIPTION=$(grep -m1 'description' "$AGENTS_DIR/$AGENT_ID/agent.json.envsubst" \
+          | head -1 | sed 's/.*"description": *"//;s/".*//' 2>/dev/null) || true
+      fi
+      # Fallback: extract from AGENTS.md frontmatter
+      if [ -z "$DESCRIPTION" ]; then
+        DESCRIPTION=$(grep -m1 '^description:' "$AGENTS_DIR/$AGENT_ID/AGENTS.md.envsubst" \
+          | sed 's/^description: *//' 2>/dev/null) || true
+      fi
       DESCRIPTION="${DESCRIPTION:-A custom OpenClaw agent}"
+    fi
+
+    # Auto-generate agent.json and ConfigMap shell if user only provided AGENTS.md
+    if [ ! -f "$AGENTS_DIR/$AGENT_ID/agent.json.envsubst" ]; then
+      log_info "Generating agent.json.envsubst from AGENTS.md..."
+      EMOJI=$(grep -A2 'openclaw:' "$AGENTS_DIR/$AGENT_ID/AGENTS.md.envsubst" \
+        | grep 'emoji:' | sed 's/.*emoji: *"//;s/".*//' 2>/dev/null) || true
+      COLOR=$(grep -A3 'openclaw:' "$AGENTS_DIR/$AGENT_ID/AGENTS.md.envsubst" \
+        | grep 'color:' | sed 's/.*color: *"//;s/".*//' 2>/dev/null) || true
+      AGENT_ID_UNDERSCORE=$(echo "$AGENT_ID" | tr '-' '_')
+      cat > "$AGENTS_DIR/$AGENT_ID/agent.json.envsubst" <<AJEOF
+{
+  "name": "\${OPENCLAW_PREFIX}_${AGENT_ID_UNDERSCORE}",
+  "display_name": "$DISPLAY_NAME",
+  "description": "$DESCRIPTION",
+  "emoji": "${EMOJI:-🤖}",
+  "color": "${COLOR:-#6C5CE7}",
+  "capabilities": ["chat"],
+  "tags": [],
+  "version": "1.0.0"
+}
+AJEOF
+      log_success "Generated agent.json.envsubst"
+    fi
+    if [ ! -f "$AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst" ]; then
+      log_info "Generating ConfigMap shell..."
+      cat > "$AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst" <<CMEOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${AGENT_ID}-agent
+  namespace: \${OPENCLAW_NAMESPACE}
+  labels:
+    app: openclaw
+    agent: ${AGENT_ID}
+data: {}
+CMEOF
+      log_success "Generated ${AGENT_ID}-agent.yaml.envsubst"
     fi
   else
     log_error "Agent directory exists but has no template: $AGENTS_DIR/$AGENT_ID"
-    log_error "Expected: ${AGENT_ID}-agent.yaml.envsubst"
+    log_error "Expected: AGENTS.md.envsubst"
     exit 1
   fi
 fi
@@ -153,17 +205,22 @@ if ! $SKIP_SCAFFOLD; then
   log_info "Creating agent: $AGENT_ID"
   mkdir -p "$AGENTS_DIR/$AGENT_ID"
 
+  # Copy all template files
   cp "$TEMPLATE_DIR/agent.yaml.template" "$AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst"
+  cp "$TEMPLATE_DIR/AGENTS.md.template" "$AGENTS_DIR/$AGENT_ID/AGENTS.md.envsubst"
+  cp "$TEMPLATE_DIR/agent.json.template" "$AGENTS_DIR/$AGENT_ID/agent.json.envsubst"
 
-  # Substitute placeholders
-  sed -i.bak \
-    -e "s/REPLACE_AGENT_ID/$AGENT_ID/g" \
-    -e "s/REPLACE_DISPLAY_NAME/$DISPLAY_NAME/g" \
-    -e "s/REPLACE_DESCRIPTION/$DESCRIPTION/g" \
-    -e "s/REPLACE_EMOJI/$EMOJI/g" \
-    -e "s/REPLACE_COLOR/$COLOR/g" \
-    "$AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst"
-  rm -f "$AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst.bak"
+  # Substitute placeholders in all scaffolded files
+  for f in "$AGENTS_DIR/$AGENT_ID"/*.envsubst; do
+    sed -i.bak \
+      -e "s/REPLACE_AGENT_ID/$AGENT_ID/g" \
+      -e "s/REPLACE_DISPLAY_NAME/$DISPLAY_NAME/g" \
+      -e "s/REPLACE_DESCRIPTION/$DESCRIPTION/g" \
+      -e "s/REPLACE_EMOJI/$EMOJI/g" \
+      -e "s/REPLACE_COLOR/$COLOR/g" \
+      "$f"
+    rm -f "${f}.bak"
+  done
 
   log_success "Scaffolded $AGENTS_DIR/$AGENT_ID/"
 
@@ -191,7 +248,7 @@ if $SCAFFOLD_ONLY; then
   echo ""
   echo "  Next steps:"
   echo "    1. Edit the agent instructions:"
-  echo "       $AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst"
+  echo "       $AGENTS_DIR/$AGENT_ID/AGENTS.md.envsubst"
   echo ""
   echo "    2. Deploy:"
   echo "       ./scripts/add-agent.sh $AGENT_ID"
@@ -247,15 +304,44 @@ export DEFAULT_AGENT_MODEL="${DEFAULT_AGENT_MODEL:-local/openai/gpt-oss-20b}"
 
 ENVSUBST_VARS='${OPENCLAW_PREFIX} ${OPENCLAW_NAMESPACE} ${SHADOWMAN_CUSTOM_NAME} ${SHADOWMAN_DISPLAY_NAME} ${DEFAULT_AGENT_MODEL}'
 
-TPL="$AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst"
-OUT="$GENERATED_AGENT_DIR/${AGENT_ID}-agent.yaml"
-envsubst "$ENVSUBST_VARS" < "$TPL" > "$OUT"
-log_success "Generated $(basename "$OUT")"
+# Process envsubst on all .envsubst files
+for tpl in "$AGENTS_DIR/$AGENT_ID"/*.envsubst; do
+  out="$GENERATED_AGENT_DIR/$(basename "${tpl%.envsubst}")"
+  envsubst "$ENVSUBST_VARS" < "$tpl" > "$out"
+done
+log_success "Generated agent files in $GENERATED_AGENT_DIR/"
 
-# ---- Step 4: Apply the agent ConfigMap ----
+# ---- Step 4: Build and apply the agent ConfigMap ----
 
-log_info "Applying agent ConfigMap..."
-$KUBECTL apply -f "$OUT"
+log_info "Building agent ConfigMap from separate files..."
+
+# Helper: indent content for YAML block scalar embedding
+indent_yaml() { sed 's/^/    /'; }
+
+AGENTS_MD_FILE="$GENERATED_AGENT_DIR/AGENTS.md"
+AGENT_JSON_FILE="$GENERATED_AGENT_DIR/agent.json"
+CM_YAML="$GENERATED_AGENT_DIR/${AGENT_ID}-agent.yaml"
+
+# If separate AGENTS.md exists, build ConfigMap by embedding files
+if [ -f "$AGENTS_MD_FILE" ] && [ -f "$AGENT_JSON_FILE" ]; then
+  cat > "$CM_YAML" <<CONFIGMAP_EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${AGENT_ID}-agent
+  namespace: ${OPENCLAW_NAMESPACE}
+  labels:
+    app: openclaw
+    agent: ${AGENT_ID}
+data:
+  AGENTS.md: |
+$(cat "$AGENTS_MD_FILE" | indent_yaml)
+  agent.json: |
+$(cat "$AGENT_JSON_FILE" | indent_yaml)
+CONFIGMAP_EOF
+fi
+
+$KUBECTL apply -f "$CM_YAML"
 log_success "ConfigMap ${AGENT_ID}-agent applied"
 
 # ---- Step 5: Add agent to live gateway config ----
@@ -353,7 +439,7 @@ echo "  Agent:     $DISPLAY_NAME"
 echo "  ID:        $AGENT_FULL_ID"
 echo "  Workspace: $WORKSPACE_DIR"
 echo ""
-echo "  Edit instructions: $AGENTS_DIR/$AGENT_ID/${AGENT_ID}-agent.yaml.envsubst"
+echo "  Edit instructions: $AGENTS_DIR/$AGENT_ID/AGENTS.md.envsubst"
 echo "  After editing, re-run: ./scripts/add-agent.sh  (or redeploy manually)"
 echo ""
 if [ -f "$AGENTS_DIR/$AGENT_ID/JOB.md" ]; then

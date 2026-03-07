@@ -204,9 +204,41 @@ if ! $K8S_MODE; then
   echo ""
 fi
 
+# Assemble agent ConfigMaps from separate files (AGENTS.md, agent.json)
+# If an agent dir has separate AGENTS.md + agent.json, embed them into the ConfigMap YAML.
+# Agents with monolithic ConfigMaps (e.g. shadowman) are applied as-is.
+indent_yaml() { sed 's/^/    /'; }
+
+for agent_dir in "$GENERATED_DIR/agents/openclaw/agents"/*/; do
+  [ -d "$agent_dir" ] || continue
+  agent_name="$(basename "$agent_dir")"
+  cm_yaml="$agent_dir/${agent_name}-agent.yaml"
+  agents_md="$agent_dir/AGENTS.md"
+  agent_json="$agent_dir/agent.json"
+
+  if [ -f "$cm_yaml" ] && [ -f "$agents_md" ] && [ -f "$agent_json" ]; then
+    # Rebuild ConfigMap with embedded file contents
+    ns="${OPENCLAW_NAMESPACE}"
+    cat > "$cm_yaml" <<CONFIGMAP_EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${agent_name}-agent
+  namespace: ${ns}
+  labels:
+    app: openclaw
+    agent: ${agent_name}
+data:
+  AGENTS.md: |
+$(cat "$agents_md" | indent_yaml)
+  agent.json: |
+$(cat "$agent_json" | indent_yaml)
+CONFIGMAP_EOF
+  fi
+done
+
 # Deploy agent ConfigMaps AFTER config patch (must come after any kustomize apply,
 # since the base kustomization includes a default shadowman-agent that would overwrite)
-# Auto-discover: find all *-agent.yaml files in agent subdirectories
 log_info "Deploying agent ConfigMaps..."
 AGENT_CM_COUNT=0
 for agent_yaml in "$GENERATED_DIR/agents/openclaw/agents"/*/*-agent.yaml; do

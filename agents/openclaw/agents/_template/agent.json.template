@@ -1,0 +1,10 @@
+{
+  "name": "${OPENCLAW_PREFIX}_REPLACE_AGENT_ID",
+  "display_name": "REPLACE_DISPLAY_NAME",
+  "description": "REPLACE_DESCRIPTION",
+  "emoji": "REPLACE_EMOJI",
+  "color": "REPLACE_COLOR",
+  "capabilities": ["chat"],
+  "tags": [],
+  "version": "1.0.0"
+}

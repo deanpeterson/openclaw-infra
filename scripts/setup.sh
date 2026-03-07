@@ -477,7 +477,8 @@ export SHADOWMAN_CUSTOM_NAME="${SHADOWMAN_CUSTOM_NAME:-shadowman}"
 export SHADOWMAN_DISPLAY_NAME="${SHADOWMAN_DISPLAY_NAME:-Shadowman}"
 
 # Container image (override via OPENCLAW_IMAGE env var or .env)
-export OPENCLAW_IMAGE="${OPENCLAW_IMAGE:-quay.io/aicatalyst/openclaw:latest}"
+# TODO: switch to quay.io/aicatalyst/openclaw:latest once GH Actions CI is set up
+export OPENCLAW_IMAGE="${OPENCLAW_IMAGE:-quay.io/sallyom/openclaw:latest}"
 
 # Default model endpoint (for existing .env files that don't have it yet)
 export MODEL_ENDPOINT="${MODEL_ENDPOINT:-http://vllm.openclaw-llms.svc.cluster.local/v1}"

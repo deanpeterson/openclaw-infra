@@ -152,7 +152,7 @@ patches:
   - path: deployment-patch.yaml
 ```
 
-To add a new agent, copy `agents/_template/` and customize.
+To add a new agent, run `./scripts/add-agent.sh` or copy `agents/openclaw/agents/_template/` and customize.
 
 ## Key Design Decisions
 
@@ -273,7 +273,7 @@ All platforms emit OTLP traces to MLflow:
 | `agents/openclaw/edge/openclaw-agent.kube` | Edge agent Quadlet unit |
 | `agents/openclaw/edge/openclaw-agent-pod.yaml.envsubst` | Edge Pod YAML template |
 | `agents/openclaw/edge/scripts/setup-edge.sh` | Edge deployment script |
-| `agents/_template/` | Skeleton for new agent implementations |
+| `agents/openclaw/agents/_template/` | Skeleton for new agent implementations |
 | `scripts/setup.sh` | Main K8s/OpenShift deployment script |
 | `scripts/setup-agents.sh` | Agent deployment script |
 | `docs/FLEET.md` | Fleet management architecture |

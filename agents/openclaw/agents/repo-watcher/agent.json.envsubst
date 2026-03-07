@@ -1,0 +1,10 @@
+{
+  "name": "${OPENCLAW_PREFIX}_repo_watcher",
+  "display_name": "Repo Watcher",
+  "description": "Monitors openclaw/openclaw GitHub repo for recent changes",
+  "emoji": "👀",
+  "color": "#2ECC71",
+  "capabilities": ["chat", "github-monitoring"],
+  "tags": ["monitoring", "github"],
+  "version": "1.0.0"
+}

@@ -6,15 +6,20 @@
 #   podman build --build-arg OPENCLAW_REF=v1.2.3 -t openclaw:v1.2.3 .
 #   podman build --build-arg OPENCLAW_EXTENSIONS="diagnostics-otel" -t openclaw:latest .
 
-# ── Stage 1: Build ──────────────────────────────────────────────
-FROM registry.access.redhat.com/ubi9/nodejs-22 AS build
-
+# Global ARGs — available to all stages (re-declare inside stage to use)
 ARG OPENCLAW_REPO=https://github.com/openclaw/openclaw.git
 ARG OPENCLAW_REF=main
 # Opt-in extensions at build time (space-separated directory names).
 # When empty (default), no extensions are included (matching upstream).
 # Example: --build-arg OPENCLAW_EXTENSIONS="diagnostics-otel memory-core telegram"
 ARG OPENCLAW_EXTENSIONS=""
+
+# ── Stage 1: Build ──────────────────────────────────────────────
+FROM registry.access.redhat.com/ubi9/nodejs-22 AS build
+
+ARG OPENCLAW_REPO
+ARG OPENCLAW_REF
+ARG OPENCLAW_EXTENSIONS
 
 WORKDIR /opt/app-root/src
 
@@ -31,7 +36,6 @@ RUN echo "Cloning ${OPENCLAW_REPO} @ ${OPENCLAW_REF}" && \
 # Extensions with no deps (memory-core, telegram, slack, etc.) are kept — they're
 # just source files loaded at runtime, matching what upstream ships by default.
 # Use OPENCLAW_EXTENSIONS to opt-in extensions that need deps (e.g. diagnostics-otel).
-ARG OPENCLAW_EXTENSIONS
 RUN keep=" $OPENCLAW_EXTENSIONS " && \
     for ext in extensions/*/; do \
       [ ! -f "$ext/package.json" ] && continue; \
@@ -80,26 +84,40 @@ LABEL org.opencontainers.image.source="https://github.com/openclaw/openclaw" \
       org.opencontainers.image.title="OpenClaw (UBI 9)" \
       org.opencontainers.image.description="OpenClaw gateway on UBI 9 Node.js 22 minimal"
 
-WORKDIR /opt/app-root/src
+WORKDIR /app
 
-COPY --from=build /opt/app-root/src/dist ./dist
-COPY --from=build /opt/app-root/src/node_modules ./node_modules
-COPY --from=build /opt/app-root/src/package.json .
-COPY --from=build /opt/app-root/src/openclaw.mjs .
-COPY --from=build /opt/app-root/src/extensions ./extensions
-COPY --from=build /opt/app-root/src/docs ./docs
-
+# Create node user (uid 1000) matching upstream openclaw image.
+# UBI minimal images default to uid 1001 — we need 1000 for compatibility
+# with K8s deployments that set runAsUser: 1000 and fsGroup: 1000.
 USER 0
-RUN mkdir -p /data/openclaw && \
-    chgrp -R 0 /data/openclaw && \
-    chmod -R g=u /data/openclaw && \
-    ln -sf /opt/app-root/src/openclaw.mjs /usr/local/bin/openclaw && \
-    chmod 755 /opt/app-root/src/openclaw.mjs && \
-    ln -sf /opt/app-root/src /app
-USER 1001
+RUN useradd -u 1000 -g 0 -d /home/node -m node && \
+    chown node:0 /app
+
+COPY --from=build --chown=node:0 /opt/app-root/src/dist ./dist
+COPY --from=build --chown=node:0 /opt/app-root/src/node_modules ./node_modules
+COPY --from=build --chown=node:0 /opt/app-root/src/package.json .
+COPY --from=build --chown=node:0 /opt/app-root/src/openclaw.mjs .
+COPY --from=build --chown=node:0 /opt/app-root/src/extensions ./extensions
+COPY --from=build --chown=node:0 /opt/app-root/src/docs ./docs
+
+# Normalize extension permissions (plugin safety checks reject world-writable dirs)
+RUN find /app/extensions -type d -exec chmod 755 {} + 2>/dev/null; \
+    find /app/extensions -type f -exec chmod 644 {} + 2>/dev/null; \
+    true
+
+# Expose CLI binary without requiring npm global writes as non-root
+RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw && \
+    chmod 755 /app/openclaw.mjs
+
+# Pre-create state directory with OpenShift-compatible perms (group 0 = root group)
+RUN mkdir -p /home/node/.openclaw && \
+    chown -R node:0 /home/node && \
+    chmod -R g=u /home/node
+
+USER node
 
 ENV NODE_ENV=production
-ENV OPENCLAW_STATE_DIR=/data/openclaw
+ENV HOME=/home/node
 
 EXPOSE 18789
 
