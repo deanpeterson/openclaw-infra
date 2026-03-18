@@ -1,5 +1,6 @@
-# OpenClaw Gateway - UBI 9 multi-stage build
-# Clones source from GitHub, builds, and produces a minimal runtime image.
+# OpenClaw Gateway - UBI 9 multi-stage build (with Playwright browser support)
+# Clones source from GitHub, builds, and produces a runtime image with Chromium
+# for full browser automation via OpenClaw's browser tool.
 #
 # Build:
 #   podman build -t openclaw:latest .
@@ -77,19 +78,59 @@ RUN pnpm build
 ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm ui:build
 
-# ── Stage 2: Runtime ───────────────────────────────────────────
-FROM registry.access.redhat.com/ubi9/nodejs-22-minimal
+# ── Stage 2: Runtime (with Playwright + Chromium) ─────────────
+# Using full UBI 9 nodejs-22 (not minimal) because Chromium requires
+# many shared libraries that are not available in the minimal image.
+FROM registry.access.redhat.com/ubi9/nodejs-22
 
-LABEL org.opencontainers.image.source="https://github.com/openclaw/openclaw" \
-      org.opencontainers.image.title="OpenClaw (UBI 9)" \
-      org.opencontainers.image.description="OpenClaw gateway on UBI 9 Node.js 22 minimal"
+LABEL org.opencontainers.image.source="https://github.com/deanpeterson/openclaw-infra" \
+      org.opencontainers.image.title="OpenClaw (UBI 9 + Browser)" \
+      org.opencontainers.image.description="OpenClaw gateway on UBI 9 Node.js 22 with Playwright Chromium for browser automation"
 
 WORKDIR /app
 
-# Create node user (uid 1000) matching upstream openclaw image.
-# UBI minimal images default to uid 1001 — we need 1000 for compatibility
-# with K8s deployments that set runAsUser: 1000 and fsGroup: 1000.
+# Install Chromium runtime dependencies.
+# Playwright does not officially support RPM-based distros, so we install
+# the shared libraries Chromium needs manually instead of using --with-deps.
 USER 0
+RUN dnf install -y --disablerepo='*' --enablerepo='ubi-*' \
+        alsa-lib \
+        at-spi2-atk \
+        at-spi2-core \
+        atk \
+        cairo \
+        cups-libs \
+        dbus-libs \
+        expat \
+        gdk-pixbuf2 \
+        glib2 \
+        gtk3 \
+        libX11 \
+        libXcomposite \
+        libXdamage \
+        libXext \
+        libXfixes \
+        libXrandr \
+        libXtst \
+        libdrm \
+        libgcc \
+        libstdc++ \
+        libxcb \
+        libxkbcommon \
+        libxshmfence \
+        mesa-libgbm \
+        nspr \
+        nss \
+        nss-util \
+        pango \
+        zlib \
+        liberation-fonts \
+        libicu \
+        libjpeg-turbo \
+        libwebp \
+    && dnf clean all
+
+# Create node user (uid 1000) matching upstream openclaw image.
 RUN useradd -u 1000 -g 0 -d /home/node -m node && \
     chown node:0 /app
 
@@ -109,6 +150,18 @@ RUN find /app/extensions -type d -exec chmod 755 {} + 2>/dev/null; \
 RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw && \
     chmod 755 /app/openclaw.mjs
 
+# Install Playwright Chromium browser binary.
+# Use OpenClaw's bundled playwright-core CLI to avoid npm version conflicts.
+# Store browsers in a shared path accessible to the node user.
+ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
+RUN mkdir -p $PLAYWRIGHT_BROWSERS_PATH && \
+    chown -R node:0 $PLAYWRIGHT_BROWSERS_PATH && \
+    chmod -R g=u $PLAYWRIGHT_BROWSERS_PATH
+
+USER node
+RUN node /app/node_modules/playwright-core/cli.js install chromium
+
+USER 0
 # Pre-create state directory with OpenShift-compatible perms (group 0 = root group)
 RUN mkdir -p /home/node/.openclaw && \
     chown -R node:0 /home/node && \
