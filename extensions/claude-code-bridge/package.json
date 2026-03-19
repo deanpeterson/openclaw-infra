@@ -3,9 +3,19 @@
   "version": "0.1.0",
   "description": "OpenClaw extension that bridges to Claude Code CLI for subscription-based model access",
   "type": "module",
-  "main": "index.js",
+  "private": true,
+  "peerDependencies": {
+    "openclaw": ">=2026.3.11"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
   "openclaw": {
-    "extension": true
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "license": "Apache-2.0"
 }

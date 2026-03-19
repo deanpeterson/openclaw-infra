@@ -1,0 +1,15 @@
+# Minimal layer on top of existing OpenClaw image — adds the Claude Code Bridge extension.
+# Use the full Dockerfile for a complete rebuild; use this for fast iteration.
+FROM quay.io/aicatalyst/openclaw:latest
+
+USER 0
+
+# Add Claude Code Bridge extension
+COPY --chown=node:0 extensions/claude-code-bridge /app/extensions/claude-code-bridge
+RUN chmod 755 /app/extensions/claude-code-bridge && \
+    chmod 644 /app/extensions/claude-code-bridge/*
+
+USER node
+
+# Direct gateway start (no proxy entrypoint needed)
+CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
