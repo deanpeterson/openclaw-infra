@@ -84,8 +84,8 @@ RUN pnpm ui:build
 FROM registry.access.redhat.com/ubi9/nodejs-22
 
 LABEL org.opencontainers.image.source="https://github.com/deanpeterson/openclaw-infra" \
-      org.opencontainers.image.title="OpenClaw (UBI 9 + Browser)" \
-      org.opencontainers.image.description="OpenClaw gateway on UBI 9 Node.js 22 with Playwright Chromium for browser automation"
+      org.opencontainers.image.title="OpenClaw (UBI 9 + Browser + Claude Code)" \
+      org.opencontainers.image.description="OpenClaw gateway on UBI 9 Node.js 22 with Playwright Chromium and Claude Code CLI for subscription-based model access"
 
 WORKDIR /app
 
@@ -162,8 +162,18 @@ USER node
 RUN node /app/node_modules/playwright-core/cli.js install chromium
 
 USER 0
-# Pre-create state directory with OpenShift-compatible perms (group 0 = root group)
-RUN mkdir -p /home/node/.openclaw && \
+
+# Install Claude Code CLI and claude-max-api-proxy.
+# Claude Code CLI provides subscription-based access to Claude models.
+# The proxy wraps the CLI behind an OpenAI-compatible HTTP API on port 3456,
+# so each agent gets its own isolated Claude session, memory, and project context.
+RUN npm install -g @anthropic-ai/claude-code claude-max-api-proxy 2>/dev/null || \
+    npm install -g @anthropic-ai/claude-code 2>/dev/null || true
+
+# Pre-create state directories with OpenShift-compatible perms (group 0 = root group)
+# Each agent gets its own PVC mounted at /home/node, so .openclaw/ and .claude/
+# persist across restarts with independent session state.
+RUN mkdir -p /home/node/.openclaw /home/node/.claude && \
     chown -R node:0 /home/node && \
     chmod -R g=u /home/node
 
@@ -171,10 +181,18 @@ USER node
 
 ENV NODE_ENV=production
 ENV HOME=/home/node
+# Claude proxy port (used when CLAUDE_PROXY_ENABLED=true)
+ENV CLAUDE_PROXY_PORT=3456
 
 EXPOSE 18789
+
+# Entrypoint script: optionally starts claude-max-api-proxy in the background
+# before launching the OpenClaw gateway. Each agent pod gets its own proxy
+# instance with its own Claude session, memory, and context.
+COPY --chown=node:0 entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 HEALTHCHECK --interval=3m --timeout=10s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:18789/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
+CMD ["/app/entrypoint.sh"]
