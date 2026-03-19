@@ -84,8 +84,8 @@ RUN pnpm ui:build
 FROM registry.access.redhat.com/ubi9/nodejs-22
 
 LABEL org.opencontainers.image.source="https://github.com/deanpeterson/openclaw-infra" \
-      org.opencontainers.image.title="OpenClaw (UBI 9 + Browser + Claude Code)" \
-      org.opencontainers.image.description="OpenClaw gateway on UBI 9 Node.js 22 with Playwright Chromium and Claude Code CLI for subscription-based model access"
+      org.opencontainers.image.title="OpenClaw (UBI 9 + Browser + Claude Code Bridge)" \
+      org.opencontainers.image.description="OpenClaw gateway on UBI 9 Node.js 22 with Playwright Chromium and Claude Code Bridge extension"
 
 WORKDIR /app
 
@@ -163,12 +163,9 @@ RUN node /app/node_modules/playwright-core/cli.js install chromium
 
 USER 0
 
-# Install Claude Code CLI and claude-max-api-proxy.
-# Claude Code CLI provides subscription-based access to Claude models.
-# The proxy wraps the CLI behind an OpenAI-compatible HTTP API on port 3456,
-# so each agent gets its own isolated Claude session, memory, and project context.
-RUN npm install -g @anthropic-ai/claude-code claude-max-api-proxy 2>/dev/null || \
-    npm install -g @anthropic-ai/claude-code 2>/dev/null || true
+# Install Claude Code CLI (subscription-based access to Claude models).
+# The claude-code-bridge extension handles session management — no proxy needed.
+RUN npm install -g @anthropic-ai/claude-code 2>/dev/null || true
 
 # Pre-create state directories with OpenShift-compatible perms (group 0 = root group)
 # Each agent gets its own PVC mounted at /home/node, so .openclaw/ and .claude/
@@ -181,18 +178,14 @@ USER node
 
 ENV NODE_ENV=production
 ENV HOME=/home/node
-# Claude proxy port (used when CLAUDE_PROXY_ENABLED=true)
-ENV CLAUDE_PROXY_PORT=3456
+
+# Copy Claude Code Bridge extension into the extensions directory.
+# OpenClaw auto-loads extensions from /app/extensions/ at startup.
+COPY --chown=node:0 extensions/claude-code-bridge /app/extensions/claude-code-bridge
 
 EXPOSE 18789
-
-# Entrypoint script: optionally starts claude-max-api-proxy in the background
-# before launching the OpenClaw gateway. Each agent pod gets its own proxy
-# instance with its own Claude session, memory, and context.
-COPY --chown=node:0 entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
 
 HEALTHCHECK --interval=3m --timeout=10s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:18789/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["/app/entrypoint.sh"]
+CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]

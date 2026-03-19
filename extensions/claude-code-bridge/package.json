@@ -1,0 +1,11 @@
+{
+  "name": "claude-code-bridge",
+  "version": "0.1.0",
+  "description": "OpenClaw extension that bridges to Claude Code CLI for subscription-based model access",
+  "type": "module",
+  "main": "index.js",
+  "openclaw": {
+    "extension": true
+  },
+  "license": "Apache-2.0"
+}
