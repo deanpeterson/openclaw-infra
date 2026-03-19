@@ -1,0 +1,8 @@
+{
+  "id": "claude-code-bridge",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
