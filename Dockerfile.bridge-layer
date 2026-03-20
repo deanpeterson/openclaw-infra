@@ -17,6 +17,9 @@ RUN for ext in /app/dist/extensions/*/; do \
       fi; \
     done
 
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
 # Add Claude Code Bridge extension to both source and dist paths
 COPY --chown=node:0 extensions/claude-code-bridge /app/extensions/claude-code-bridge
 COPY --chown=node:0 extensions/claude-code-bridge /app/dist/extensions/claude-code-bridge
