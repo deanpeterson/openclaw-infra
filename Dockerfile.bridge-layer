@@ -4,13 +4,13 @@ FROM quay.io/aicatalyst/openclaw:latest
 
 USER 0
 
-# Remove broken dist extensions that fail validation (they reference ../../ imports).
-# Keep only extensions without package.json (bare .js/.ts files) and our bridge.
+# Remove dist extensions whose index.js imports ../../ (escapes package dir).
+# Keep extensions that are self-contained (like memory-core, lobster).
 RUN for ext in /app/dist/extensions/*/; do \
-      [ -f "$ext/package.json" ] || continue; \
-      name=$(basename "$ext"); \
-      [ "$name" = "claude-code-bridge" ] && continue; \
-      rm -rf "$ext"; \
+      [ -f "$ext/index.js" ] || continue; \
+      if grep -q 'from "\.\./' "$ext/index.js" 2>/dev/null; then \
+        rm -rf "$ext"; \
+      fi; \
     done
 
 # Add Claude Code Bridge extension to both source and dist paths
