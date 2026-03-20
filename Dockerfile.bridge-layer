@@ -4,11 +4,15 @@ FROM quay.io/aicatalyst/openclaw:latest
 
 USER 0
 
-# Remove dist extensions whose index.js imports ../../ (escapes package dir).
-# Keep extensions that are self-contained (like memory-core, lobster).
+# Remove ALL dist extensions except our bridge and self-contained ones.
+# The bundled dist extensions have broken ../../ imports that fail validation.
+# Keep only directories that DON'T have ../../ imports in their JS files.
 RUN for ext in /app/dist/extensions/*/; do \
-      [ -f "$ext/index.js" ] || continue; \
-      if grep -q 'from "\.\./' "$ext/index.js" 2>/dev/null; then \
+      name=$(basename "$ext"); \
+      [ "$name" = "claude-code-bridge" ] && continue; \
+      if find "$ext" -name "*.js" -exec grep -l 'from "\.\./' {} + >/dev/null 2>&1; then \
+        rm -rf "$ext"; \
+      elif [ ! -f "$ext/index.js" ] && [ ! -f "$ext/index.ts" ]; then \
         rm -rf "$ext"; \
       fi; \
     done
