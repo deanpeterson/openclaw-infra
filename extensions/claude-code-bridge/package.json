@@ -14,7 +14,7 @@
   },
   "openclaw": {
     "extensions": [
-      "./index.ts"
+      "./index.js"
     ]
   },
   "license": "Apache-2.0"
