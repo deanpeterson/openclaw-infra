@@ -1,4 +1,3 @@
-import { i as definePluginEntry } from "../../core-CaZPnQeC.js";
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -99,6 +98,11 @@ function runClaude(prompt, options) {
 //#endregion
 
 //#region extensions/claude-code-bridge/index.ts
+// Self-contained definePluginEntry (avoids import from bundled core)
+function definePluginEntry({ id, name, description, kind, configSchema, register }) {
+  return { id, name, description, ...(kind ? { kind } : {}), configSchema: configSchema || { type: "object", additionalProperties: false, properties: {} }, register };
+}
+
 var claude_code_bridge_default = definePluginEntry({
   id: "claude-code-bridge",
   name: "Claude Code Bridge",
