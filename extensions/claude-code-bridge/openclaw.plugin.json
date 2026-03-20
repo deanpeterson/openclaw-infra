@@ -1,5 +1,6 @@
 {
   "id": "claude-code-bridge",
+  "enabledByDefault": true,
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
