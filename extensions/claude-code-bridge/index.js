@@ -108,96 +108,62 @@ var claude_code_bridge_default = definePluginEntry({
   name: "Claude Code Bridge",
   description: "Bridge to Claude Code CLI for subscription-based model access",
   register(api) {
-    // claude_code_resume — primary tool
-    api.registerTool(() => ({
-      name: "claude_code_resume",
-      label: "Claude Code (Resume)",
-      description: "Send a prompt to Claude Code CLI. Automatically resumes the most recent session matching the taskLabel, or starts a new session. This is the primary tool for using Claude Code through your Max subscription.",
-      parameters: {
-        type: "object",
-        properties: {
-          prompt: { type: "string", description: "The prompt or message to send to Claude Code" },
-          taskLabel: { type: "string", description: "Label for the task/conversation thread (e.g. 'chat', 'fix-bug')" },
-          agentId: { type: "string", description: "Your agent ID for session isolation" }
+    api.registerTool((ctx) => {
+      return [
+        {
+          name: "claude_code_resume",
+          label: "Claude Code",
+          description: "Send a prompt to Claude Code CLI via your Max subscription. Automatically resumes or starts sessions by taskLabel.",
+          parameters: {
+            type: "object",
+            properties: {
+              prompt: { type: "string", description: "The prompt or message to send to Claude Code" },
+              taskLabel: { type: "string", description: "Label for the task thread (e.g. 'chat', 'fix-bug')" },
+              agentId: { type: "string", description: "Your agent ID for session isolation" }
+            },
+            required: ["prompt", "agentId"]
+          },
+          async execute(_id, params) {
+            const { prompt, taskLabel, agentId } = params;
+            const index = loadSessions();
+            let session = findActive(index, agentId, taskLabel);
+            let isNew = false;
+            if (!session) {
+              const now = new Date().toISOString();
+              session = { sessionId: `pending-${randomUUID()}`, agentId, taskLabel, cwd: DEFAULT_CWD, status: "active", createdAt: now, lastUsedAt: now, messageCount: 0, totalCost: 0 };
+              index.sessions.push(session);
+              saveSessions(index);
+              isNew = true;
+            }
+            const result = await runClaude(prompt, { sessionId: session.sessionId, cwd: session.cwd });
+            const realSessionId = result.sessionId || session.sessionId;
+            const s = index.sessions.find(s => s.sessionId === session.sessionId);
+            if (s) {
+              if (realSessionId !== s.sessionId) s.sessionId = realSessionId;
+              s.totalCost += result.cost; s.messageCount += 1;
+              if (taskLabel) s.taskLabel = taskLabel;
+              s.status = result.ok ? "active" : "error";
+              s.lastUsedAt = new Date().toISOString();
+              saveSessions(index);
+            }
+            const text = result.ok ? result.text : `Error: ${result.text}`;
+            return { content: [{ type: "text", text }] };
+          }
         },
-        required: ["prompt", "agentId"]
-      },
-      async execute(_id, params) {
-        const { prompt, taskLabel, agentId } = params;
-        const index = loadSessions();
-        let session = findActive(index, agentId, taskLabel);
-        let isNew = false;
-
-        if (!session) {
-          const now = new Date().toISOString();
-          session = { sessionId: `pending-${randomUUID()}`, agentId, taskLabel, cwd: DEFAULT_CWD, status: "active", createdAt: now, lastUsedAt: now, messageCount: 0, totalCost: 0 };
-          index.sessions.push(session);
-          saveSessions(index);
-          isNew = true;
+        {
+          name: "claude_code_sessions",
+          label: "Claude Code Sessions",
+          description: "List Claude Code sessions with status and cost.",
+          parameters: { type: "object", properties: { agentId: { type: "string" } }, required: ["agentId"] },
+          async execute(_id, params) {
+            const index = loadSessions();
+            const sessions = index.sessions.filter(s => s.agentId === params.agentId);
+            const lines = sessions.map(s => `- ${s.taskLabel || "(unlabeled)"}: ${s.status} (${s.messageCount} msgs, $${s.totalCost.toFixed(4)})`);
+            return { content: [{ type: "text", text: sessions.length ? lines.join("\n") : "No sessions." }] };
+          }
         }
-
-        const result = await runClaude(prompt, { sessionId: session.sessionId, cwd: session.cwd });
-        const realSessionId = result.sessionId || session.sessionId;
-
-        // Update session
-        const s = index.sessions.find(s => s.sessionId === session.sessionId);
-        if (s) {
-          if (realSessionId !== s.sessionId) s.sessionId = realSessionId;
-          s.totalCost += result.cost;
-          s.messageCount += 1;
-          if (taskLabel) s.taskLabel = taskLabel;
-          s.status = result.ok ? "active" : "error";
-          s.lastUsedAt = new Date().toISOString();
-          saveSessions(index);
-        }
-
-        const text = result.ok ? result.text : `Error: ${result.text}`;
-        return { content: [{ type: "text", text: `[Claude Code${isNew ? " (new session)" : ""} | session: ${realSessionId.substring(0,8)}... | cost: $${result.cost.toFixed(4)}]\n\n${text}` }] };
-      }
-    }));
-
-    // claude_code_sessions — list sessions
-    api.registerTool(() => ({
-      name: "claude_code_sessions",
-      label: "Claude Code Sessions",
-      description: "List your Claude Code sessions with status, cost, and message count.",
-      parameters: {
-        type: "object",
-        properties: {
-          agentId: { type: "string", description: "Your agent ID" }
-        },
-        required: ["agentId"]
-      },
-      async execute(_id, params) {
-        const index = loadSessions();
-        const sessions = index.sessions.filter(s => s.agentId === params.agentId);
-        const lines = sessions.map(s => `- ${s.taskLabel || "(unlabeled)"}: ${s.status} (${s.messageCount} msgs, $${s.totalCost.toFixed(4)}) [${s.sessionId.substring(0,8)}...]`);
-        return { content: [{ type: "text", text: sessions.length ? lines.join("\n") : "No sessions found." }] };
-      }
-    }));
-
-    // claude_code_kill — mark session done
-    api.registerTool(() => ({
-      name: "claude_code_kill",
-      label: "Claude Code Kill Session",
-      description: "Mark a Claude Code session as done.",
-      parameters: {
-        type: "object",
-        properties: {
-          sessionId: { type: "string", description: "Session ID to kill" }
-        },
-        required: ["sessionId"]
-      },
-      async execute(_id, params) {
-        const index = loadSessions();
-        const session = index.sessions.find(s => s.sessionId === params.sessionId);
-        if (!session) return { content: [{ type: "text", text: `Session ${params.sessionId} not found.` }] };
-        session.status = "done";
-        session.lastUsedAt = new Date().toISOString();
-        saveSessions(index);
-        return { content: [{ type: "text", text: `Session ${params.sessionId} marked as done.` }] };
-      }
-    }));
+      ];
+    }, { names: ["claude_code_resume", "claude_code_sessions"] });
   }
 });
 //#endregion

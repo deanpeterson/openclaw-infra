@@ -4,8 +4,16 @@ FROM quay.io/aicatalyst/openclaw:latest
 
 USER 0
 
+# Remove broken dist extensions that fail validation (they reference ../../ imports).
+# Keep only extensions without package.json (bare .js/.ts files) and our bridge.
+RUN for ext in /app/dist/extensions/*/; do \
+      [ -f "$ext/package.json" ] || continue; \
+      name=$(basename "$ext"); \
+      [ "$name" = "claude-code-bridge" ] && continue; \
+      rm -rf "$ext"; \
+    done
+
 # Add Claude Code Bridge extension to both source and dist paths
-# OpenClaw runtime scans /app/dist/extensions/ for plugin discovery
 COPY --chown=node:0 extensions/claude-code-bridge /app/extensions/claude-code-bridge
 COPY --chown=node:0 extensions/claude-code-bridge /app/dist/extensions/claude-code-bridge
 RUN chmod 755 /app/extensions/claude-code-bridge /app/dist/extensions/claude-code-bridge && \
