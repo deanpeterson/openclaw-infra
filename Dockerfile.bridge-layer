@@ -20,6 +20,11 @@ RUN for ext in /app/dist/extensions/*/; do \
 # Install Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
+# Create OAuth token well-known path (Claude CLI reads from here)
+RUN mkdir -p /home/claude/.claude/remote && \
+    chown -R node:0 /home/claude && \
+    chmod -R g=u /home/claude
+
 # Add Claude Code Bridge extension to both source and dist paths
 COPY --chown=node:0 extensions/claude-code-bridge /app/extensions/claude-code-bridge
 COPY --chown=node:0 extensions/claude-code-bridge /app/dist/extensions/claude-code-bridge
