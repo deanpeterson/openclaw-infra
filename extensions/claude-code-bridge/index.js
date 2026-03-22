@@ -114,6 +114,7 @@ var claude_code_bridge_default = definePluginEntry({
           name: "claude_code_resume",
           label: "Claude Code",
           description: "Send a prompt to Claude Code CLI via your Max subscription. Automatically resumes or starts sessions by taskLabel.",
+          defaultProfiles: ["coding", "full", "minimal"],
           parameters: {
             type: "object",
             properties: {
@@ -154,6 +155,7 @@ var claude_code_bridge_default = definePluginEntry({
           name: "claude_code_sessions",
           label: "Claude Code Sessions",
           description: "List Claude Code sessions with status and cost.",
+          defaultProfiles: ["coding", "full"],
           parameters: { type: "object", properties: { agentId: { type: "string" } }, required: ["agentId"] },
           async execute(_id, params) {
             const index = loadSessions();
