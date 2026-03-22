@@ -31,6 +31,58 @@ COPY --chown=node:0 extensions/claude-code-bridge /app/dist/extensions/claude-co
 RUN chmod 755 /app/extensions/claude-code-bridge /app/dist/extensions/claude-code-bridge && \
     chmod 644 /app/extensions/claude-code-bridge/* /app/dist/extensions/claude-code-bridge/*
 
+# Patch the current upstream bundle so plugin tools preserve defaultProfiles.
+# This keeps Claude bridge tools in the effective model tool policy instead of
+# dropping their profile metadata during runtime normalization.
+RUN node <<'EOF'
+const fs = require("fs");
+const path = require("path");
+
+function patchFile(filePath, replacements) {
+  let source = fs.readFileSync(filePath, "utf8");
+  let changed = false;
+
+  for (const [before, after] of replacements) {
+    if (!source.includes(before)) {
+      throw new Error(`Expected snippet not found in ${filePath}`);
+    }
+    source = source.replace(before, after);
+    changed = true;
+  }
+
+  if (changed) {
+    fs.writeFileSync(filePath, source);
+  }
+}
+
+const distDir = "/app/dist";
+const authProfiles = fs.readdirSync(distDir).find((name) => name.startsWith("auth-profiles-") && name.endsWith(".js"));
+const gatewayCli = fs.readdirSync(distDir).find((name) => name.startsWith("gateway-cli-") && name.endsWith(".js"));
+
+if (!authProfiles || !gatewayCli) {
+  throw new Error("Unable to locate OpenClaw dist bundles to patch");
+}
+
+patchFile(path.join(distDir, authProfiles), [[
+`			pluginToolMeta.set(tool, {
+				pluginId: entry.pluginId,
+				optional: entry.optional
+			});`,
+`			pluginToolMeta.set(tool, {
+				pluginId: entry.pluginId,
+				optional: entry.optional,
+				defaultProfiles: Array.isArray(tool.defaultProfiles) ? [...tool.defaultProfiles] : []
+			});`
+]]);
+
+patchFile(path.join(distDir, gatewayCli), [[
+`			optional: meta?.optional,
+			defaultProfiles: []`,
+`			optional: meta?.optional,
+			defaultProfiles: Array.isArray(tool.defaultProfiles) ? [...tool.defaultProfiles] : Array.isArray(meta?.defaultProfiles) ? [...meta.defaultProfiles] : []`
+]]);
+EOF
+
 USER node
 
 # Direct gateway start (no proxy entrypoint needed)

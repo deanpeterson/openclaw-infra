@@ -103,6 +103,7 @@ export default function register(api: any) {
   // ── claude_code_resume ─────────────────────────────────────
   api.registerTool({
     name: "claude_code_resume",
+    defaultProfiles: ["coding", "full", "minimal"],
     description:
       "Send a prompt to Claude Code. Automatically resumes the most recent session " +
       "matching the taskLabel, or starts a new session if none exists. This is the " +
@@ -175,6 +176,7 @@ export default function register(api: any) {
   // ── claude_code_query ──────────────────────────────────────
   api.registerTool({
     name: "claude_code_query",
+    defaultProfiles: ["coding", "full"],
     description:
       "Send a prompt to Claude Code with explicit control: start a new session " +
       "or resume a specific session by ID. Use claude_code_resume instead for " +
@@ -254,6 +256,7 @@ export default function register(api: any) {
   // ── claude_code_sessions ───────────────────────────────────
   api.registerTool({
     name: "claude_code_sessions",
+    defaultProfiles: ["coding", "full"],
     description:
       "List your Claude Code sessions with status, cost, and message count.",
     parameters: {
