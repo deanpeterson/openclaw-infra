@@ -71,7 +71,7 @@ const CLI_TIMEOUT_MS = 10 * 60 * 1000;
 
 function runClaude(prompt, options) {
   return new Promise((resolve) => {
-    const args = ["-p", prompt, "--output-format", "stream-json"];
+    const args = ["-p", prompt, "--output-format", "stream-json", "--verbose"];
     if (options.sessionId && !options.sessionId.startsWith("pending-")) {
       args.push("--resume", options.sessionId);
     }
