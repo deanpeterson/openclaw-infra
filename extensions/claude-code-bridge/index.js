@@ -68,16 +68,57 @@ function parseStreamJson(raw) {
 //#region cli-runner
 const DEFAULT_CWD = process.env.OPENCLAW_WORKSPACE || join(process.env.HOME || "/home/node", ".openclaw", "workspace");
 const CLI_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_ALLOWED_TOOLS = [
+  "Bash(curl:*)",
+  "Bash(cat:*)",
+  "Bash(sed:*)",
+  "Bash(grep:*)",
+  "Bash(find:*)",
+  "Bash(ls:*)",
+  "Bash(rg:*)",
+  "Bash(jq:*)",
+  "Bash(python3:*)",
+  "Read",
+  "Edit",
+  "MultiEdit",
+  "Write",
+  "Glob",
+  "Grep",
+  "LS"
+];
+
+function buildClaudeArgs(prompt, options) {
+  const args = [
+    "-p",
+    prompt,
+    "--output-format",
+    "stream-json",
+    "--permission-mode",
+    process.env.CLAUDE_CODE_PERMISSION_MODE || "dontAsk"
+  ];
+  const allowedTools = (process.env.CLAUDE_CODE_ALLOWED_TOOLS || DEFAULT_ALLOWED_TOOLS.join(",")).split(",").map((tool) => tool.trim()).filter(Boolean);
+  if (allowedTools.length > 0) {
+    args.push("--allowedTools", allowedTools.join(","));
+  }
+  if ((process.env.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS || "").toLowerCase() === "true") {
+    args.push("--dangerously-skip-permissions");
+  }
+  if (options.cwd) {
+    args.push("--add-dir", options.cwd);
+  }
+  if (options.sessionId && !options.sessionId.startsWith("pending-")) {
+    args.push("--resume", options.sessionId);
+  }
+  return args;
+}
 
 function runClaude(prompt, options) {
   return new Promise((resolve) => {
-    const args = ["-p", prompt, "--output-format", "stream-json", "--verbose"];
-    if (options.sessionId && !options.sessionId.startsWith("pending-")) {
-      args.push("--resume", options.sessionId);
-    }
+    const cwd = options.cwd || DEFAULT_CWD;
+    const args = buildClaudeArgs(prompt, { ...options, cwd });
     const chunks = [], stderrChunks = [];
     const child = spawn("claude", args, {
-      cwd: options.cwd || DEFAULT_CWD,
+      cwd,
       env: { ...process.env, HOME: process.env.HOME || "/home/node" },
       stdio: ["ignore", "pipe", "pipe"],
       timeout: CLI_TIMEOUT_MS

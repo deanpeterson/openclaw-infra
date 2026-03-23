@@ -30,6 +30,62 @@ const DEFAULT_CWD =
 // Timeout for Claude CLI invocations (10 minutes)
 const CLI_TIMEOUT_MS = 10 * 60 * 1000;
 
+const DEFAULT_ALLOWED_TOOLS = [
+  "Bash(curl:*)",
+  "Bash(cat:*)",
+  "Bash(sed:*)",
+  "Bash(grep:*)",
+  "Bash(find:*)",
+  "Bash(ls:*)",
+  "Bash(rg:*)",
+  "Bash(jq:*)",
+  "Bash(python3:*)",
+  "Read",
+  "Edit",
+  "MultiEdit",
+  "Write",
+  "Glob",
+  "Grep",
+  "LS",
+];
+
+function buildClaudeArgs(
+  prompt: string,
+  options: { sessionId?: string; cwd?: string }
+): string[] {
+  const args = [
+    "-p",
+    prompt,
+    "--output-format",
+    "stream-json",
+    "--permission-mode",
+    process.env.CLAUDE_CODE_PERMISSION_MODE || "dontAsk",
+  ];
+
+  const allowedTools = (process.env.CLAUDE_CODE_ALLOWED_TOOLS || DEFAULT_ALLOWED_TOOLS.join(","))
+    .split(",")
+    .map((tool) => tool.trim())
+    .filter(Boolean);
+
+  if (allowedTools.length > 0) {
+    args.push("--allowedTools", allowedTools.join(","));
+  }
+
+  if ((process.env.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS || "").toLowerCase() === "true") {
+    args.push("--dangerously-skip-permissions");
+  }
+
+  if (options.cwd) {
+    args.push("--add-dir", options.cwd);
+  }
+
+  if (options.sessionId && !options.sessionId.startsWith("pending-")) {
+    args.push("--resume", options.sessionId);
+  }
+
+  return args;
+}
+
 // ── CLI Execution ──────────────────────────────────────────────
 
 /**
@@ -40,14 +96,8 @@ function runClaude(
   options: { sessionId?: string; cwd?: string }
 ): Promise<ClaudeResult> {
   return new Promise((resolve) => {
-    const args = ["-p", prompt, "--output-format", "stream-json"];
-
-    // Resume existing session if we have a real (non-pending) session ID
-    if (options.sessionId && !options.sessionId.startsWith("pending-")) {
-      args.push("--resume", options.sessionId);
-    }
-
     const cwd = options.cwd || DEFAULT_CWD;
+    const args = buildClaudeArgs(prompt, { ...options, cwd });
     const chunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
 

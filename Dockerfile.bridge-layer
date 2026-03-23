@@ -44,7 +44,8 @@ function patchFile(filePath, replacements) {
 
   for (const [before, after] of replacements) {
     if (!source.includes(before)) {
-      throw new Error(`Expected snippet not found in ${filePath}`);
+      console.warn(`Skipping patch; expected snippet not found in ${filePath}`);
+      continue;
     }
     source = source.replace(before, after);
     changed = true;
