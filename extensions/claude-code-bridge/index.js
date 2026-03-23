@@ -93,6 +93,7 @@ function buildClaudeArgs(prompt, options) {
     prompt,
     "--output-format",
     "stream-json",
+    "--verbose",
     "--permission-mode",
     process.env.CLAUDE_CODE_PERMISSION_MODE || "dontAsk"
   ];
