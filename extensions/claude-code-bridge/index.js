@@ -69,15 +69,7 @@ function parseStreamJson(raw) {
 const DEFAULT_CWD = process.env.OPENCLAW_WORKSPACE || join(process.env.HOME || "/home/node", ".openclaw", "workspace");
 const CLI_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_ALLOWED_TOOLS = [
-  "Bash(curl:*)",
-  "Bash(cat:*)",
-  "Bash(sed:*)",
-  "Bash(grep:*)",
-  "Bash(find:*)",
-  "Bash(ls:*)",
-  "Bash(rg:*)",
-  "Bash(jq:*)",
-  "Bash(python3:*)",
+  "Bash(*)",
   "Read",
   "Edit",
   "MultiEdit",
@@ -101,7 +93,8 @@ function buildClaudeArgs(prompt, options) {
   if (allowedTools.length > 0) {
     args.push("--allowedTools", allowedTools.join(","));
   }
-  if ((process.env.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS || "").toLowerCase() === "true") {
+  const skipPermissions = (process.env.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS || "true").toLowerCase();
+  if (skipPermissions !== "false") {
     args.push("--dangerously-skip-permissions");
   }
   if (options.cwd) {

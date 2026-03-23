@@ -31,15 +31,7 @@ const DEFAULT_CWD =
 const CLI_TIMEOUT_MS = 10 * 60 * 1000;
 
 const DEFAULT_ALLOWED_TOOLS = [
-  "Bash(curl:*)",
-  "Bash(cat:*)",
-  "Bash(sed:*)",
-  "Bash(grep:*)",
-  "Bash(find:*)",
-  "Bash(ls:*)",
-  "Bash(rg:*)",
-  "Bash(jq:*)",
-  "Bash(python3:*)",
+  "Bash(*)",
   "Read",
   "Edit",
   "MultiEdit",
@@ -72,7 +64,8 @@ function buildClaudeArgs(
     args.push("--allowedTools", allowedTools.join(","));
   }
 
-  if ((process.env.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS || "").toLowerCase() === "true") {
+  const skipPermissions = (process.env.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS || "true").toLowerCase();
+  if (skipPermissions !== "false") {
     args.push("--dangerously-skip-permissions");
   }
 
