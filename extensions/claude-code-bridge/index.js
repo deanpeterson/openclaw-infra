@@ -79,6 +79,28 @@ const DEFAULT_ALLOWED_TOOLS = [
   "LS"
 ];
 
+function buildWorkspaceSkillBootstrap(cwd) {
+  const workspace = cwd || DEFAULT_CWD;
+  const skillsDir = join(workspace, "skills");
+  const developerHubSkill = join(skillsDir, "developer-hub", "SKILL.md");
+  const lines = [
+    "Workspace instructions bootstrap:",
+    `- Your working directory is ${workspace}.`,
+    `- Workspace skills live under ${skillsDir}.`,
+    "- Before acting on a domain-specific request, inspect the relevant workspace skill file(s) and use them as the source of truth.",
+    "- Do not claim a skill is missing unless you first checked the corresponding file path from the workspace.",
+    "- If the task involves Developer Hub, Backstage, scaffolder, catalog, templates, or RHDH, you must read ./skills/developer-hub/SKILL.md before doing anything else."
+  ];
+  if (existsSync(developerHubSkill)) {
+    lines.push(`- Confirmed present: ${developerHubSkill}.`);
+  }
+  return `${lines.join("\n")}\n\n`;
+}
+
+function prepareClaudePrompt(prompt, cwd) {
+  return `${buildWorkspaceSkillBootstrap(cwd)}${prompt}`;
+}
+
 function buildClaudeArgs(prompt, options) {
   const args = [
     "-p",
@@ -109,7 +131,8 @@ function buildClaudeArgs(prompt, options) {
 function runClaude(prompt, options) {
   return new Promise((resolve) => {
     const cwd = options.cwd || DEFAULT_CWD;
-    const args = buildClaudeArgs(prompt, { ...options, cwd });
+    const preparedPrompt = prepareClaudePrompt(prompt, cwd);
+    const args = buildClaudeArgs(preparedPrompt, { ...options, cwd });
     const chunks = [], stderrChunks = [];
     const child = spawn("claude", args, {
       cwd,
