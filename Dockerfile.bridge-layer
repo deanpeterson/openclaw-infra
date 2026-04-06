@@ -47,6 +47,11 @@ RUN mkdir -p /app/dist/extensions/discord && \
       --outbase=/app/extensions/discord \
       --outdir=/app/dist/extensions/discord
 
+# The transpiled Discord extension imports OpenClaw internals through the
+# package name "openclaw/...". The upstream runtime layout resolves those via
+# the app root, so mirror that package alias explicitly in node_modules.
+RUN ln -sfn /app /app/node_modules/openclaw
+
 # Patch the current upstream bundle so plugin tools preserve defaultProfiles.
 # This keeps Claude bridge tools in the effective model tool policy instead of
 # dropping their profile metadata during runtime normalization.
