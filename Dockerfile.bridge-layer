@@ -40,16 +40,12 @@ RUN chmod 755 /app/extensions/claude-code-bridge /app/dist/extensions/claude-cod
 RUN mkdir -p /app/dist/extensions/discord && \
     cp /app/extensions/discord/openclaw.plugin.json /app/dist/extensions/discord/openclaw.plugin.json && \
     cp /app/extensions/discord/package.json /app/dist/extensions/discord/package.json && \
-    esbuild /app/extensions/discord/index.ts \
-      --bundle \
+    cp -a /app/extensions/discord/node_modules /app/dist/extensions/discord/node_modules && \
+    esbuild $(find /app/extensions/discord -type f -name '*.ts' ! -path '*/node_modules/*' | tr '\n' ' ') \
       --platform=node \
       --format=esm \
-      --outfile=/app/dist/extensions/discord/index.js && \
-    esbuild /app/extensions/discord/setup-entry.ts \
-      --bundle \
-      --platform=node \
-      --format=esm \
-      --outfile=/app/dist/extensions/discord/setup-entry.js
+      --outbase=/app/extensions/discord \
+      --outdir=/app/dist/extensions/discord
 
 # Patch the current upstream bundle so plugin tools preserve defaultProfiles.
 # This keeps Claude bridge tools in the effective model tool policy instead of
