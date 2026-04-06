@@ -31,6 +31,26 @@ COPY --chown=node:0 extensions/claude-code-bridge /app/dist/extensions/claude-co
 RUN chmod 755 /app/extensions/claude-code-bridge /app/dist/extensions/claude-code-bridge && \
     chmod 644 /app/extensions/claude-code-bridge/* /app/dist/extensions/claude-code-bridge/*
 
+# Restore the upstream Discord channel plugin into the dist extension root.
+# Our bridge-layer image prunes /app/dist/extensions aggressively, but Discord
+# in the base image only exists as source under /app/extensions/discord. The
+# gateway loads stock plugins from /app/dist/extensions, so without these
+# bundled entrypoints Discord never registers as a live channel provider even
+# though the token and config are present.
+RUN mkdir -p /app/dist/extensions/discord && \
+    cp /app/extensions/discord/openclaw.plugin.json /app/dist/extensions/discord/openclaw.plugin.json && \
+    cp /app/extensions/discord/package.json /app/dist/extensions/discord/package.json && \
+    node /app/node_modules/esbuild/bin/esbuild /app/extensions/discord/index.ts \
+      --bundle \
+      --platform=node \
+      --format=esm \
+      --outfile=/app/dist/extensions/discord/index.js && \
+    node /app/node_modules/esbuild/bin/esbuild /app/extensions/discord/setup-entry.ts \
+      --bundle \
+      --platform=node \
+      --format=esm \
+      --outfile=/app/dist/extensions/discord/setup-entry.js
+
 # Patch the current upstream bundle so plugin tools preserve defaultProfiles.
 # This keeps Claude bridge tools in the effective model tool policy instead of
 # dropping their profile metadata during runtime normalization.
