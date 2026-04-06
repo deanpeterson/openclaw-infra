@@ -17,8 +17,8 @@ RUN for ext in /app/dist/extensions/*/; do \
       fi; \
     done
 
-# Install Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code
+# Install Claude Code CLI and esbuild for restoring stock TS-only plugins
+RUN npm install -g @anthropic-ai/claude-code esbuild
 
 # Create OAuth token well-known path (Claude CLI reads from here)
 RUN mkdir -p /home/claude/.claude/remote && \
@@ -40,12 +40,12 @@ RUN chmod 755 /app/extensions/claude-code-bridge /app/dist/extensions/claude-cod
 RUN mkdir -p /app/dist/extensions/discord && \
     cp /app/extensions/discord/openclaw.plugin.json /app/dist/extensions/discord/openclaw.plugin.json && \
     cp /app/extensions/discord/package.json /app/dist/extensions/discord/package.json && \
-    node /app/node_modules/esbuild/bin/esbuild /app/extensions/discord/index.ts \
+    esbuild /app/extensions/discord/index.ts \
       --bundle \
       --platform=node \
       --format=esm \
       --outfile=/app/dist/extensions/discord/index.js && \
-    node /app/node_modules/esbuild/bin/esbuild /app/extensions/discord/setup-entry.ts \
+    esbuild /app/extensions/discord/setup-entry.ts \
       --bundle \
       --platform=node \
       --format=esm \
