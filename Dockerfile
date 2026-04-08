@@ -10,6 +10,7 @@
 # Global ARGs — available to all stages (re-declare inside stage to use)
 ARG OPENCLAW_REPO=https://github.com/openclaw/openclaw.git
 ARG OPENCLAW_REF=main
+ARG ENABLE_LEGACY_CLAUDE_BRIDGE=false
 # Opt-in extensions at build time (space-separated directory names).
 # When empty (default), no extensions are included (matching upstream).
 # Example: --build-arg OPENCLAW_EXTENSIONS="diagnostics-otel memory-core telegram"
@@ -83,9 +84,11 @@ RUN pnpm ui:build
 # many shared libraries that are not available in the minimal image.
 FROM registry.access.redhat.com/ubi9/nodejs-22
 
+ARG ENABLE_LEGACY_CLAUDE_BRIDGE
+
 LABEL org.opencontainers.image.source="https://github.com/deanpeterson/openclaw-infra" \
-      org.opencontainers.image.title="OpenClaw (UBI 9 + Browser + Claude Code Bridge)" \
-      org.opencontainers.image.description="OpenClaw gateway on UBI 9 Node.js 22 with Playwright Chromium and Claude Code Bridge extension"
+      org.opencontainers.image.title="OpenClaw (UBI 9 + Browser)" \
+      org.opencontainers.image.description="OpenClaw gateway on UBI 9 Node.js 22 with Playwright Chromium. Legacy Claude bridge is optional on the Codex migration branch."
 
 WORKDIR /app
 
@@ -163,9 +166,10 @@ RUN node /app/node_modules/playwright-core/cli.js install chromium
 
 USER 0
 
-# Install Claude Code CLI (subscription-based access to Claude models).
-# The claude-code-bridge extension handles session management — no proxy needed.
-RUN npm install -g @anthropic-ai/claude-code 2>/dev/null || true
+# Optional legacy bridge for the archived Claude subscription path.
+RUN if [ "$ENABLE_LEGACY_CLAUDE_BRIDGE" = "true" ]; then \
+      npm install -g @anthropic-ai/claude-code 2>/dev/null || true; \
+    fi
 
 # Pre-create state directories with OpenShift-compatible perms (group 0 = root group)
 # Each agent gets its own PVC mounted at /home/node, so .openclaw/ and .claude/
@@ -179,9 +183,10 @@ USER node
 ENV NODE_ENV=production
 ENV HOME=/home/node
 
-# Copy Claude Code Bridge extension into the extensions directory.
-# OpenClaw auto-loads extensions from /app/extensions/ at startup.
 COPY --chown=node:0 extensions/claude-code-bridge /app/extensions/claude-code-bridge
+RUN if [ "$ENABLE_LEGACY_CLAUDE_BRIDGE" != "true" ]; then \
+      rm -rf /app/extensions/claude-code-bridge; \
+    fi
 
 EXPOSE 18789
 

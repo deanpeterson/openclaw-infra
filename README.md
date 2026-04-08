@@ -2,9 +2,11 @@
 
 Deploy [OpenClaw](https://github.com/openclaw) on Kubernetes, OpenShift, and standalone Linux machines.
 
-> All deployments use the `quay.io/aicatalyst/openclaw:latest` container image, which tracks upstream `openclaw/openclaw` main and adds full OpenTelemetry instrumentation via the `diagnostics-otel` extension. This ensures every agent action — tool calls, LLM inference, message lifecycle — is traced end-to-end in MLflow.
+On the `codex-subscription-main-driver` branch, the intended runtime baseline is the full upstream-building [Dockerfile](/Users/deanpeterson/redhat/small-model-router/openclaw-infra/Dockerfile), not the legacy `Dockerfile.bridge-layer` path that existed to support the archived Claude subscription bridge.
+
+> The long-term target on this branch is a first-class OpenClaw runtime with official OpenAI Codex support, built from upstream OpenClaw source via the full Dockerfile.
 >
-> **Note:** Until GitHub Actions CI is set up for automated builds, deployments default to `quay.io/sallyom/openclaw:latest`. Override via `OPENCLAW_IMAGE` env var.
+> **Legacy note:** `Dockerfile.bridge-layer` exists only for the archived Claude bridge path. New migration work should prefer the full Dockerfile and treat the Claude bridge as optional legacy compatibility.
 
 ## Deployment Targets
 
