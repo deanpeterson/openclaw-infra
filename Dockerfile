@@ -38,18 +38,20 @@ RUN echo "Cloning ${OPENCLAW_REPO} @ ${OPENCLAW_REF}" && \
 # Extensions with no deps (memory-core, telegram, slack, etc.) are kept — they're
 # just source files loaded at runtime, matching what upstream ships by default.
 # Use OPENCLAW_EXTENSIONS to opt-in extensions that need deps (e.g. diagnostics-otel).
-RUN keep=" $OPENCLAW_EXTENSIONS " && \
-    for ext in extensions/*/; do \
-      [ ! -f "$ext/package.json" ] && continue; \
-      name="$(basename "$ext")"; \
-      has_deps=$(node -e "const d=require('./$ext/package.json').dependencies||{}; process.exit(Object.keys(d).length>0?0:1)" 2>/dev/null && echo yes || echo no); \
-      if [ "$has_deps" = "yes" ]; then \
-        case "$keep" in \
-          *" $name "*) ;; \
-          *) rm -rf "$ext" ;; \
-        esac; \
-      fi; \
-    done
+RUN if [ "${OPENCLAW_EXTENSIONS}" != "all" ]; then \
+      keep=" $OPENCLAW_EXTENSIONS " && \
+      for ext in extensions/*/; do \
+        [ ! -f "$ext/package.json" ] && continue; \
+        name="$(basename "$ext")"; \
+        has_deps=$(node -e "const d=require('./$ext/package.json').dependencies||{}; process.exit(Object.keys(d).length>0?0:1)" 2>/dev/null && echo yes || echo no); \
+        if [ "$has_deps" = "yes" ]; then \
+          case "$keep" in \
+            *" $name "*) ;; \
+            *) rm -rf "$ext" ;; \
+          esac; \
+        fi; \
+      done; \
+    fi
 
 # Install the exact pnpm version declared in package.json
 USER 0
