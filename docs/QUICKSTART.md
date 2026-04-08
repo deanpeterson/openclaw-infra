@@ -142,11 +142,12 @@ The setup script supports multiple model providers. You can also change models a
 
 | Provider | Model | How to configure |
 |----------|-------|-----------------|
-| Anthropic | `anthropic/claude-sonnet-4-6` | `ANTHROPIC_API_KEY` env var or interactive prompt |
+| OpenAI Codex subscription | `openai-codex/gpt-5.4` | Official OpenClaw Codex OAuth flow (`openclaw onboard --auth-choice openai-codex`) |
 | OpenAI | `openai/gpt-4o` | Interactive prompt during setup |
 | Google Vertex AI | `google-vertex/gemini-2.5-pro` | `--vertex` flag, requires GCP project |
-| Claude via Vertex | `anthropic-vertex/claude-sonnet-4-6` | `--vertex --vertex-provider anthropic` |
 | In-cluster vLLM | Any model on your GPU node | Set `MODEL_ENDPOINT` to your vLLM `/v1` URL |
+
+On this transition branch, Codex subscription is the intended long-term default. The currently deployed custom runtime still needs an OpenClaw upgrade before the official `openai-codex` provider is fully available in-cluster.
 
 ## Teardown
 

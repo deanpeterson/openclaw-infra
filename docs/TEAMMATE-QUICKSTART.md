@@ -5,7 +5,7 @@ Get your own OpenClaw instance running in minutes.
 ## What You Need
 
 - Access to the cluster (`oc login` or `kubectl` configured)
-- (Optional) An Anthropic API key for Claude-powered agents
+- (Recommended on this branch) A ChatGPT plan that includes Codex access
 
 ## Model Options
 
@@ -13,11 +13,12 @@ OpenClaw agents need an LLM endpoint. You have several options:
 
 | Option | When to Use | Details |
 |--------|------------|---------|
-| **Anthropic API key** | You have an Anthropic API key and want to use Claude | Agents use `anthropic/claude-sonnet-4-6` |
-| **Anthropic via Vertex** | Your org has Claude enabled on GCP Vertex AI | Agents use `anthropic-vertex/claude-sonnet-4-6`, billed through GCP |
+| **OpenAI Codex subscription** | You want the official OpenClaw Codex-first path backed by your ChatGPT/Codex plan | Target model `openai-codex/gpt-5.4` |
 | **Google Vertex AI** | Your org has a GCP project with Vertex AI enabled | Agents use `google-vertex/gemini-2.5-pro`, billed through GCP |
 | **In-cluster vLLM** | Your cluster has a GPU node with vLLM deployed | Default `MODEL_ENDPOINT`: `http://vllm.openclaw-llms.svc.cluster.local/v1` |
 | **Your own endpoint** | You already have an OpenAI-compatible model server | Supply your server's `/v1` URL as `MODEL_ENDPOINT` |
+
+This branch is intentionally steering away from the archived Claude subscription bridge pattern. The runtime still needs to be upgraded beyond OpenClaw `2026.3.22` before official `openai-codex` auth is active everywhere in-cluster.
 
 ## Step 1: Deploy Your OpenClaw
 
@@ -33,7 +34,7 @@ The script prompts you for:
 
 1. **Namespace prefix** — use your name (e.g., `bob`). Creates `bob-openclaw`.
 2. **Agent name** — pick a name for your agent (e.g., `Shadowman`, `Lynx`, `Atlas`).
-3. **API keys** — Anthropic key (optional), model endpoint, Vertex AI (optional).
+3. **Model choice** — Codex subscription target, model endpoint, Vertex AI (optional).
 
 After setup completes, your instance has:
 - A gateway with your named agent

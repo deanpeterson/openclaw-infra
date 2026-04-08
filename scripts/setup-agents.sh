@@ -169,20 +169,18 @@ else
   export MLFLOW_TLS_INSECURE="true"
 fi
 
-# Agent model priority: Anthropic API > Vertex (anthropic or google) > in-cluster
-# VERTEX_PROVIDER controls which Vertex provider: "anthropic" or "google" (default)
+# Agent model priority on the Codex transition branch:
+# Codex subscription (official OpenClaw `openai-codex`) > Vertex (google) > in-cluster.
 export VERTEX_PROVIDER="${VERTEX_PROVIDER:-google}"
-if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-  export DEFAULT_AGENT_MODEL="anthropic/claude-sonnet-4-6"
-elif [ "${VERTEX_ENABLED:-}" = "true" ] && [ "${VERTEX_PROVIDER}" = "anthropic" ]; then
-  export DEFAULT_AGENT_MODEL="anthropic-vertex/claude-sonnet-4-6"
-  log_info "Using Anthropic Vertex (Claude via GCP) as default agent model"
+if [ "${CODEX_ENABLED:-true}" = "true" ]; then
+  export DEFAULT_AGENT_MODEL="openai-codex/gpt-5.4"
+  log_info "Using OpenAI Codex subscription as the target default agent model"
 elif [ "${VERTEX_ENABLED:-}" = "true" ]; then
   export DEFAULT_AGENT_MODEL="google-vertex/gemini-2.5-pro"
   log_info "Using Google Vertex (Gemini) as default agent model"
 else
   export DEFAULT_AGENT_MODEL="local/openai/gpt-oss-20b"
-  log_info "No Anthropic API key or Vertex — agents will use in-cluster model (${MODEL_ENDPOINT})"
+  log_info "No Codex subscription or Vertex override — agents will use in-cluster model (${MODEL_ENDPOINT})"
 fi
 
 ENVSUBST_VARS='${CLUSTER_DOMAIN} ${OPENCLAW_PREFIX} ${OPENCLAW_NAMESPACE} ${OPENCLAW_GATEWAY_TOKEN} ${OPENCLAW_OAUTH_CLIENT_SECRET} ${OPENCLAW_OAUTH_COOKIE_SECRET} ${ANTHROPIC_API_KEY} ${SHADOWMAN_CUSTOM_NAME} ${SHADOWMAN_DISPLAY_NAME} ${MODEL_ENDPOINT} ${DEFAULT_AGENT_MODEL} ${GOOGLE_CLOUD_PROJECT} ${GOOGLE_CLOUD_LOCATION} ${KEYCLOAK_URL} ${KEYCLOAK_REALM} ${KEYCLOAK_ADMIN_USERNAME} ${KEYCLOAK_ADMIN_PASSWORD} ${MLFLOW_TRACKING_URI} ${MLFLOW_EXPERIMENT_ID} ${MLFLOW_TLS_INSECURE}'

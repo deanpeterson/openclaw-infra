@@ -503,20 +503,21 @@ else
   export MLFLOW_TLS_INSECURE="true"
 fi
 
-# Agent model priority: Anthropic API > Vertex (anthropic or google) > in-cluster
-# VERTEX_PROVIDER controls which Vertex provider: "anthropic" or "google" (default)
+# Agent model priority on the Codex transition branch:
+# Codex subscription (official OpenClaw `openai-codex`) > Vertex (google) > in-cluster.
+# This branch intentionally stops steering new deployments toward Anthropic-first defaults.
+# Runtime support still needs an OpenClaw upgrade beyond 2026.3.22 before `openai-codex`
+# is live in-cluster everywhere.
 export VERTEX_PROVIDER="${VERTEX_PROVIDER:-google}"
-if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-  export DEFAULT_AGENT_MODEL="anthropic/claude-sonnet-4-6"
-elif [ "${VERTEX_ENABLED:-}" = "true" ] && [ "${VERTEX_PROVIDER}" = "anthropic" ]; then
-  export DEFAULT_AGENT_MODEL="anthropic-vertex/claude-sonnet-4-6"
-  log_info "Using Anthropic Vertex (Claude via GCP) as default agent model"
+if [ "${CODEX_ENABLED:-true}" = "true" ]; then
+  export DEFAULT_AGENT_MODEL="openai-codex/gpt-5.4"
+  log_info "Using OpenAI Codex subscription as the target default agent model"
 elif [ "${VERTEX_ENABLED:-}" = "true" ]; then
   export DEFAULT_AGENT_MODEL="google-vertex/gemini-2.5-pro"
   log_info "Using Google Vertex (Gemini) as default agent model"
 else
   export DEFAULT_AGENT_MODEL="local/openai/gpt-oss-20b"
-  log_info "No Anthropic API key or Vertex — agents will use in-cluster model (${MODEL_ENDPOINT})"
+  log_info "No Codex subscription or Vertex override — agents will use in-cluster model (${MODEL_ENDPOINT})"
 fi
 
 # Explicit variable list to protect {agentId} and other non-env placeholders
