@@ -129,7 +129,6 @@ RUN dnf install -y --disablerepo='*' --enablerepo='ubi-*' \
         nss-util \
         pango \
         zlib \
-        liberation-fonts \
         libicu \
         libjpeg-turbo \
         libwebp \
